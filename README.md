@@ -1,2 +1,3 @@
-# errors
-Go error package
+# Go error package
+
+Description coming soon
