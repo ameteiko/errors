@@ -1,0 +1,2 @@
+# errors
+Go error package
