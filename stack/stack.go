@@ -2,7 +2,9 @@ package stack
 
 import (
 	"fmt"
+	"go/build"
 	"runtime"
+	"strings"
 )
 
 //
@@ -33,10 +35,12 @@ func (s *Stack) Format(st fmt.State, verb rune) {
 			)
 			fn := runtime.FuncForPC(pc)
 			if fn != nil {
-				function = fn.Name()
+				function = sanitizeFunctionName(fn.Name())
 				file, line = fn.FileLine(pc)
+				file = sanitizeFilename(file)
 			}
-			fmt.Fprintf(st, "\t%s\t↪\t%s:%d\n", function, file, line)
+
+			fmt.Fprintf(st, " @ %s:%s:%d\n", file, function, line)
 		}
 	}
 }
@@ -50,4 +54,37 @@ func Get() *Stack {
 	var st Stack = pcs[0:n]
 
 	return &st
+}
+
+//
+// sanitizeFunctionName cleans up a function name from the module full name info.
+//
+// The function name comes with full module path like github.com/VirgilSecurity/core-kit/errors.Wrap, so it's
+// necessary to strip all the information that comes before the last dot.
+//
+func sanitizeFunctionName(filename string) string {
+	lastDotIndex := strings.LastIndex(filename, ".")
+
+	return filename[lastDotIndex + 1:]
+}
+
+//
+// sanitizeFilename cleans up a file name from the GOROOT and GOPATH prefixes.
+//
+// The filename comes with full module path like /Users/ameteiko/Projects/go/src/github.com/ameteiko/errors/errors.go:,
+// so it's necessary to strip all the information that is related to GOPATH or GOROOT.
+//
+func sanitizeFilename(filename string) string {
+	pathPrefixes := []string{
+		build.Default.GOPATH + "/src",
+		runtime.GOROOT() + "/src",
+	}
+
+	for _, pathPrefix := range pathPrefixes {
+		if strings.HasPrefix(filename, pathPrefix) {
+			return filename[len(pathPrefix) + 1:]
+		}
+	}
+
+	return filename
 }

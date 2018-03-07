@@ -55,15 +55,10 @@ func (c *Chain) Append(err error) *Chain {
 // Format formats the error chain.
 //
 func (c *Chain) Format(state fmt.State, verb rune) {
-	state.Width()
 	switch verb {
 	case 'v':
 		if state.Flag('+') {
-			fmt.Fprintln(state, "CONTEXT: ")
-			for _, err := range c.GetErrors() {
-				fmt.Fprintf(state, ContextEntryFormat, err)
-			}
-			fmt.Fprintln(state, "\nSTACKTRACE: ")
+			fmt.Fprintln(state, c.Error())
 			c.stack.Format(state, verb)
 			return
 		}
