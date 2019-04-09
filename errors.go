@@ -66,7 +66,7 @@ func Cause(err error, causerObj interface{}) error {
 	if !ok {
 		// The error object is not a Chainer instance.
 		errType := reflect.TypeOf(err)
-		if doesErrorMatch(errType, causer) {
+		if doesErrorMatch(errType, causerType, causer) {
 			return err
 		} else {
 			return nil
@@ -75,7 +75,7 @@ func Cause(err error, causerObj interface{}) error {
 
 	for _, e := range chainer.GetErrors() {
 		errType := reflect.TypeOf(e)
-		if doesErrorMatch(errType, causer) {
+		if doesErrorMatch(errType, causerType, causer) {
 			return e
 		}
 	}
@@ -101,10 +101,9 @@ func WithMessage(err error, format string, args ...interface{}) error {
 //
 // doesErrorMatch returns true if err object implements or is assignable to causer.
 //
-func doesErrorMatch(err reflect.Type, causer reflect.Type) bool {
-	doesImplement := reflect.Interface == causer.Kind() && err.Implements(causer)
-	isTypeOf := reflect.Struct == causer.Kind() && err.AssignableTo(causer)
-
+func doesErrorMatch(err reflect.Type, causerType reflect.Type, causerElem reflect.Type) bool {
+	doesImplement := reflect.Interface == causerElem.Kind() && err.Implements(causerElem)
+	isTypeOf := reflect.Struct == causerElem.Kind() && err.AssignableTo(causerType)
 
 	if doesImplement || isTypeOf {
 		return true

@@ -1,10 +1,10 @@
 package errors
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"fmt"
 )
 
 //
@@ -12,17 +12,15 @@ import (
 //
 const (
 	emptyMsg = ""
-	errMsg = "error message"
-	infoMsg = "info msg"
+	errMsg   = "error message"
+	infoMsg  = "info msg"
 )
 
 //
 // New :: with an empty message :: returns an empty message
 //
-func TestNewErrorWithoutAMessage (t *testing.T) {
+func TestNewErrorWithoutAMessage(t *testing.T) {
 	err := New(emptyMsg)
-
-	err.Error()
 
 	assert.Equal(t, emptyMsg, err.Error())
 }
@@ -30,10 +28,8 @@ func TestNewErrorWithoutAMessage (t *testing.T) {
 //
 // New :: with a message :: returns a message
 //
-func TestNewError (t *testing.T) {
+func TestNewError(t *testing.T) {
 	err := New(errMsg)
-
-	err.Error()
 
 	assert.Equal(t, errMsg, err.Error())
 }
@@ -41,10 +37,8 @@ func TestNewError (t *testing.T) {
 //
 // New :: with formatted error message :: returns a message
 //
-func TestNewWithFormattedErrorMessage (t *testing.T) {
+func TestNewWithFormattedErrorMessage(t *testing.T) {
 	err := New("error %s", "message")
-
-	err.Error()
 
 	assert.Equal(t, errMsg, err.Error())
 }

@@ -5,13 +5,12 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"strings"
 )
 
 //
 // Chain.Format :: with %s flag for an empty object :: returns an empty string
 //
-func TestFormatSFlaggedForAnEmptyErrorObject (t *testing.T) {
+func TestFormatSFlaggedForAnEmptyErrorObject(t *testing.T) {
 	err := NewChain()
 
 	o := fmt.Sprintf("%s", err)
@@ -22,7 +21,7 @@ func TestFormatSFlaggedForAnEmptyErrorObject (t *testing.T) {
 //
 // Chain.Format :: with %v flag for an empty object :: returns an empty string
 //
-func TestFormatVFlaggedForAnEmptyErrorObject (t *testing.T) {
+func TestFormatVFlaggedForAnEmptyErrorObject(t *testing.T) {
 	err := NewChain()
 
 	o := fmt.Sprintf("%v", err)
@@ -30,11 +29,10 @@ func TestFormatVFlaggedForAnEmptyErrorObject (t *testing.T) {
 	assert.Empty(t, o)
 }
 
-
 //
 // Chain.Format :: with %s flag for an object with single value :: returns expected error message
 //
-func TestFormatSFlaggedForASingleErrorObject (t *testing.T) {
+func TestFormatSFlaggedForASingleErrorObject(t *testing.T) {
 	errMsg := "some error"
 	e := fmt.Errorf(errMsg)
 
@@ -48,7 +46,7 @@ func TestFormatSFlaggedForASingleErrorObject (t *testing.T) {
 //
 // Chain.Format :: with %s flag for an object with several values :: returns expected error message
 //
-func TestFormatSFlaggedForAMultivaluedErrorObject (t *testing.T) {
+func TestFormatSFlaggedForAMultivaluedErrorObject(t *testing.T) {
 	errMsg1 := "some first error"
 	errMsg2 := "some second error"
 	e1 := fmt.Errorf(errMsg1)
@@ -64,28 +62,9 @@ func TestFormatSFlaggedForAMultivaluedErrorObject (t *testing.T) {
 }
 
 //
-// Chain.Format :: with %+v flag for an object with several values :: returns expected error message
-//
-func TestFormatVPlusFlaggedForAMultivaluedErrorObject (t *testing.T) {
-	errMsg1 := "some first error"
-	errMsg2 := "some second error"
-	e1 := fmt.Errorf(errMsg1)
-	e2 := fmt.Errorf(errMsg2)
-	expectedError := fmt.Sprintf("%s%s", fmt.Sprintf(ContextEntryFormat, errMsg2), fmt.Sprintf(ContextEntryFormat, errMsg1))
-
-	err := NewChain()
-	err.Append(e1)
-	err.Append(e2)
-	o := fmt.Sprintf("%+v", err)
-
-	errorMessageMatches := strings.Contains(o, expectedError)
-	assert.True(t, errorMessageMatches)
-}
-
-//
 // Chain.Format :: with %v flag for an object with several values :: returns expected error message
 //
-func TestFormatVFlaggedForAMultivaluedErrorObject (t *testing.T) {
+func TestFormatVFlaggedForAMultivaluedErrorObject(t *testing.T) {
 	errMsg1 := "some first error"
 	errMsg2 := "some second error"
 	e1 := fmt.Errorf(errMsg1)
