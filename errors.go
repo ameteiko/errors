@@ -103,7 +103,7 @@ func WithMessage(err error, format string, args ...interface{}) error {
 //
 func doesErrorMatch(err reflect.Type, causerType reflect.Type, causerElem reflect.Type) bool {
 	doesImplement := reflect.Interface == causerElem.Kind() && err.Implements(causerElem)
-	isTypeOf := reflect.Struct == causerElem.Kind() && err.AssignableTo(causerType)
+	isTypeOf := reflect.Struct == causerElem.Kind() && (err.AssignableTo(causerType) || err.AssignableTo(causerElem))
 
 	if doesImplement || isTypeOf {
 		return true
