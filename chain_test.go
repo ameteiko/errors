@@ -95,3 +95,16 @@ func TestAppendPrependError(t *testing.T) {
 
 	assert.Equal(t, "5 : 4 : 3 : 2 : 1", o)
 }
+
+//
+// Chain.WithMessage :: with message :: returns an expected error
+//
+func TestWithMessage(t *testing.T) {
+	err1 := fmt.Errorf("1")
+	err2 := fmt.Errorf("2")
+
+	err := NewChain().Append(err1).Append(err2).WithMessage("3")
+	o := fmt.Sprintf("%s", err)
+
+	assert.Equal(t, "3 : 2 : 1", o)
+}

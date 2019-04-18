@@ -1,7 +1,6 @@
 package errors
 
-type Enchainer  interface {
-
+type Enchainer interface {
 }
 
 //
@@ -24,4 +23,9 @@ type Chainer interface {
 	// GetErrors returns the error chain.
 	//
 	GetErrors() []error
+
+	//
+	// WithMessage returns a chain with attached formatted message.
+	//
+	WithMessage(format string, args ...interface{}) error
 }

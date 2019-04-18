@@ -2,6 +2,7 @@ package errors
 
 import (
 	"fmt"
+
 	"github.com/ameteiko/errors/stack"
 )
 
@@ -100,4 +101,12 @@ func (c *Chain) GetErrors() []error {
 	}
 
 	return errs
+}
+
+//
+// WithMessage returns a chain with attached formatted message.
+//
+func (c *Chain) WithMessage(format string, args ...interface{}) error {
+
+	return WithMessage(c, format, args...)
 }
