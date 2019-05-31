@@ -9,6 +9,7 @@ import (
 //
 // Wrap wraps errors list into an error chain.
 // TODO: if there are two enchainers, raise an error.
+// TODO: test appending another enchainer.
 //
 func Wrap(errs ...error) Chainer {
 	var (
@@ -39,7 +40,15 @@ func Wrap(errs ...error) Chainer {
 	// Prepend errors
 	for i := range errs[:enchainerIndex] {
 		err := errs[enchainerIndex-i-1]
-		enchainer.Prepend(err)
+		anotherEnchainer, isAnotherEnchainer := err.(Chainer)
+		if !isAnotherEnchainer {
+			enchainer.Prepend(err)
+			continue
+		}
+
+		for _, innerEnchainerError := range anotherEnchainer.GetErrors() {
+			enchainer.Prepend(innerEnchainerError)
+		}
 	}
 
 	// Append errors
