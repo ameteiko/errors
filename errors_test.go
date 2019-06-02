@@ -1,312 +1,288 @@
 package errors
 
 import (
-	"errors"
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-//
-// Wrap :: for a single built-in error :: returns an Appender with just one entry
-//
-func TestWrapForAnError(t *testing.T) {
-	e1 := errors.New("1")
-
-	enchainer := Wrap(e1)
-
-	assert.Len(t, enchainer.GetErrors(), 1)
-	assert.Equal(t, e1, enchainer.GetErrors()[0])
-	assert.Equal(t, "1", enchainer.Error())
+// ErrorsTestSuite is a test suite for exposed functions.
+type ErrorsTestSuite struct {
+	suite.Suite
+	err1      error
+	err2      error
+	err3      error
+	err31     error
+	err32     error
+	err4      error
+	err5      error
+	customErr testError
 }
 
-//
-// Wrap :: for a several built-in errors :: returns an Appender with several entries
-//
-func TestWrapForSeveralErrors(t *testing.T) {
-	e1 := errors.New("1")
-	e2 := errors.New("2")
-	e3 := errors.New("3")
-
-	enchainer := Wrap(e1, e2, e3)
-
-	assert.Len(t, enchainer.GetErrors(), 3)
-	assert.Equal(t, "3 : 2 : 1", enchainer.Error())
+// TestErrorsTestSuite runs all ErrorsTestSuite tests.
+func TestErrorsTestSuite(t *testing.T) {
+	suite.Run(t, new(ErrorsTestSuite))
 }
 
-//
-// Wrap :: for a built-in error and an enchainer instance that goes first :: returns an Appender with two entries
-//
-func TestWrapForABuiltInErrorAndEnchainerErrors(t *testing.T) {
-	e1 := NewChain().Append(errors.New("1"))
-	e2 := errors.New("2")
-
-	enchainer := Wrap(e1, e2)
-
-	assert.Len(t, enchainer.GetErrors(), 2)
-	assert.Equal(t, "2 : 1", enchainer.Error())
+// SetupSuite initializes the ErrorsTestSuite.
+func (s *ErrorsTestSuite) SetupSuite() {
+	s.err1 = fmt.Errorf("1")
+	s.err2 = fmt.Errorf("2")
+	s.err3 = fmt.Errorf("3")
+	s.err31 = fmt.Errorf("31")
+	s.err32 = fmt.Errorf("32")
+	s.err4 = fmt.Errorf("4")
+	s.err5 = fmt.Errorf("5")
+	s.customErr = testError{"custom error"}
 }
 
-//
-// Wrap :: for a built-in errors and an enchainer instance that goes first :: returns an Appender with several entries
-//
-func TestWrapForABuiltInErrorsAndEnchainerGoesFirst(t *testing.T) {
-	e1 := NewChain().Append(errors.New("1"))
-	e2 := errors.New("2")
-	e3 := errors.New("3")
-	e4 := errors.New("4")
+// Wrap :: for a single error :: returns a chain with just one entry.
+func (s *ErrorsTestSuite) TestWrapForAnError() {
 
-	enchainer := Wrap(e1, e2, e3, e4)
+	err := Wrap(s.err1)
+	chain := err.(*chain)
 
-	assert.Len(t, enchainer.GetErrors(), 4)
-	assert.Equal(t, "4 : 3 : 2 : 1", enchainer.Error())
+	s.Len(chain.getErrors(), 1)
+	s.Equal(s.err1, chain.getErrors()[0])
+	s.Equal("1", chain.Error())
 }
 
-//
-// Wrap :: for a built-in error and an enchainer instance that goes last :: returns an Appender with two entries
-//
-func TestWrapForABuiltInErrorAndEnchainerThatGoesLast(t *testing.T) {
-	e1 := errors.New("1")
-	e2 := NewChain().Append(errors.New("2"))
+// Wrap :: for a several errors :: returns a chain with several entries.
+func (s *ErrorsTestSuite) TestWrapForSeveralErrors() {
 
-	enchainer := Wrap(e1, e2)
+	err := Wrap(s.err1, s.err2, s.err3)
+	chain := err.(*chain)
 
-	assert.Len(t, enchainer.GetErrors(), 2)
-	assert.Equal(t, "2 : 1", enchainer.Error())
+	s.Len(chain.getErrors(), 3)
+	s.Equal("3 : 2 : 1", chain.Error())
 }
 
-//
-// Wrap :: for a built-in errors and an enchainer instance that goes last :: returns an Appender with several entries
-//
-func TestWrapForABuiltInErrorsAndEnchainerThatGoesLast(t *testing.T) {
-	e1 := errors.New("1")
-	e2 := errors.New("2")
-	e3 := errors.New("3")
-	e4 := NewChain().Append(errors.New("4"))
+// Wrap :: for a chain instance that goes first and an error :: returns a chain with two entries.
+func (s *ErrorsTestSuite) TestWrapForAChainInstanceAndAnError() {
+	c1 := newChain()
+	c1.append(s.err1)
 
-	enchainer := Wrap(e1, e2, e3, e4)
+	err := Wrap(c1, s.err2)
+	chain := err.(*chain)
 
-	assert.Len(t, enchainer.GetErrors(), 4)
-	assert.Equal(t, "4 : 3 : 2 : 1", enchainer.Error())
+	s.Len(chain.getErrors(), 2)
+	s.Equal("2 : 1", chain.Error())
+	s.Equal(c1, chain)
+	s.Equal(s.err2, chain.getErrors()[0])
+	s.Equal(s.err1, chain.getErrors()[1])
 }
 
-//
-// Wrap :: for a built-in errors and an enchainer in between :: returns an Appender with several entries
-//
-func TestWrapForABuiltInErrorsAndEnchainerInBetween(t *testing.T) {
-	e1 := errors.New("1")
-	e2 := errors.New("2")
-	e3 := errors.New("3")
-	e4 := NewChain().Append(errors.New("4"))
-	e5 := errors.New("5")
+// Wrap :: for a a enchain instance that goes first and three errors :: returns a chain with several entries.
+func (s *ErrorsTestSuite) TestWrapForAEnchainInstanceAndThreeErrors() {
+	c1 := newChain()
+	c1.append(s.err1)
 
-	enchainer := Wrap(e1, e2, e3, e4, e5)
+	err := Wrap(c1, s.err2, s.err3, s.err4)
+	chain := err.(*chain)
 
-	assert.Len(t, enchainer.GetErrors(), 5)
-	assert.Equal(t, "5 : 4 : 3 : 2 : 1", enchainer.Error())
+	s.Len(chain.getErrors(), 4)
+	s.Equal("4 : 3 : 2 : 1", chain.Error())
 }
 
-//
-// Wrap :: for a built-in errors and an several enchainers in between :: returns an Appender with several entries
-//
-func TestWrapForABuiltInErrorsAndSeveralEnchainersInBetween(t *testing.T) {
-	e1 := errors.New("1")
-	e2 := errors.New("2")
-	e3 := NewChain().Append(errors.New("31")).Append(errors.New("32"))
-	e4 := NewChain().Append(errors.New("4"))
-	e5 := errors.New("5")
+// Wrap :: for an error and a chain instance that goes last :: returns a chain with two entries.
+func (s *ErrorsTestSuite) TestWrapForAnErrorAndChainInstanceThatGoesLast() {
+	c2 := newChain()
+	c2.append(s.err2)
 
-	enchainer := Wrap(e1, e2, e3, e4, e5)
+	err := Wrap(s.err1, c2)
+	chain := err.(*chain)
 
-	assert.Len(t, enchainer.GetErrors(), 5)
-	assert.Equal(t, "5 : 4 : 32 : 31 : 2 : 1", enchainer.Error())
-	assert.Equal(t, e4, enchainer)
+	s.Len(chain.getErrors(), 2)
+	s.Equal("2 : 1", chain.Error())
+	s.Equal(c2, chain)
+	s.Equal(s.err2, chain.getErrors()[0])
+	s.Equal(s.err1, chain.getErrors()[1])
 }
 
-//
-// Wrap :: for a single chainer :: returns a chainer instance
-//
-func TestWrapForASingleChainer(t *testing.T) {
-	chain := NewChain()
+// Wrap :: for three errors and a chain instance that goes last :: returns a chain with several entries.
+func (s *ErrorsTestSuite) TestWrapForAThreeErrorsAndChainInstanceThatGoesLast() {
+	c4 := newChain()
+	c4.append(s.err4)
 
-	chainedChain := Wrap(chain)
+	err := Wrap(s.err1, s.err2, s.err3, c4)
+	chain := err.(*chain)
 
-	assert.Equal(t, chain, chainedChain)
-	assert.Len(t, chainedChain.GetErrors(), 0)
+	s.Len(chain.getErrors(), 4)
+	s.Equal("4 : 3 : 2 : 1", chain.Error())
 }
 
-//
-// Cause :: for custom error type selected by type reference :: returns custom error
-//
-func TestCauseForExistingErrorType(t *testing.T) {
-	err := NewChain()
-	e1 := fmt.Errorf("1")
-	e2 := customError{"2"}
-	e3 := fmt.Errorf("3")
-	e4 := fmt.Errorf("4")
+// Wrap :: for a errors and a chain instance in between :: returns a chain with several entries.
+func (s *ErrorsTestSuite) TestWrapForErrorsAndChainInstanceInBetween() {
+	c4 := newChain()
+	c4.append(s.err4)
 
-	err.Append(e1).Append(e2).Append(e3).Append(e4)
-	e := Cause(err, (*customError)(nil))
+	err := Wrap(s.err1, s.err2, s.err3, c4, s.err5)
+	chain := err.(*chain)
 
-	assert.NotEmpty(t, e)
-	assert.Equal(t, e2, e)
+	s.Len(chain.getErrors(), 5)
+	s.Equal("5 : 4 : 3 : 2 : 1", chain.Error())
 }
 
-//
-// Cause :: for custom error type selected by interface :: returns nil
-//
-func TestCauseForAnInterface(t *testing.T) {
-	err := NewChain()
-	e1 := fmt.Errorf("1")
-	e2 := customError{"2"}
-	e3 := fmt.Errorf("3")
-	e4 := fmt.Errorf("4")
+// Wrap :: for errors and an several chain instances in between :: returns a chain with several entries.
+func (s *ErrorsTestSuite) TestWrapForABuiltInErrorsAndSeveralEnchainersInBetween() {
+	c3 := newChain()
+	c3.append(s.err31)
+	c3.append(s.err32)
+	c4 := newChain()
+	c4.append(s.err4)
 
-	err.Append(e1).Append(e2).Append(e3).Append(e4)
-	e := Cause(err, (customMessenger)(nil))
+	err := Wrap(s.err1, s.err2, c3, c4, s.err5)
+	chain := err.(*chain)
 
-	assert.Nil(t, e)
+	s.Len(chain.getErrors(), 6)
+	s.Equal("5 : 4 : 32 : 31 : 2 : 1", chain.Error())
+	s.Equal(c4, chain)
 }
 
-//
-// Cause :: for custom error type selected by interface pointer :: returns error
-//
-func TestCauseForAnInterfaceReference(t *testing.T) {
-	err := NewChain()
-	e1 := fmt.Errorf("1")
-	e2 := customError{"2"}
-	e3 := fmt.Errorf("3")
-	e4 := fmt.Errorf("4")
+// Wrap :: for a single chain instance :: returns a chain instance.
+func (s *ErrorsTestSuite) TestWrapForASingleChainer() {
+	c := newChain()
 
-	err.Append(e1).Append(e2).Append(e3).Append(e4)
-	e := Cause(err, (*customMessenger)(nil))
+	err := Wrap(c)
+	chain := err.(*chain)
 
-	assert.NotEmpty(t, e)
-	assert.Equal(t, e2, e)
+	s.Equal(c, chain)
+	s.Len(chain.getErrors(), 0)
 }
 
-//
-// Cause :: for several custom error types selected by type reference :: returns the first custom error
-//
-func TestCauseForSeveralCustomErrors(t *testing.T) {
-	err := NewChain()
-	e1 := fmt.Errorf("1")
-	e2 := customError{"2"}
-	e3 := fmt.Errorf("3")
-	e4 := customError{"4"}
-	e5 := fmt.Errorf("5")
+// Cause :: for custom error type selected by type reference :: returns custom error.
+func (s *ErrorsTestSuite) TestCauseForExistingErrorType() {
+	err2 := testError{"2"}
+	c := newChain()
+	c.append(s.err1)
+	c.append(err2)
+	c.append(s.err3)
+	c.append(s.err4)
 
-	err.Append(e1).Append(e2).Append(e3).Append(e4).Append(e5)
-	e := Cause(err, (*customError)(nil))
+	err := Cause(c, (*testError)(nil))
 
-	assert.NotEmpty(t, e)
-	assert.Equal(t, e4, e)
+	s.NotEmpty(err)
+	s.Equal(err2, err)
 }
 
-//
-// Cause :: for an error that doesn't exist in a chain :: returns nil
-//
-func TestCauseForAnErrorThatDoesNotExistInChain(t *testing.T) {
-	err := errors.New(errMsg)
-	chain := Wrap(err, errors.New(infoMsg))
+// Cause :: for custom error type selected by interface :: returns nil.
+func (s *ErrorsTestSuite) TestCauseForAnInterface() {
+	c := newChain()
+	c.append(s.err1)
+	c.append(testError{"2"})
+	c.append(s.err3)
+	c.append(s.err4)
 
-	e := Cause(chain, (*Err)(nil))
+	err := Cause(c, (testErrorInterface)(nil))
 
-	assert.Empty(t, e)
+	s.Nil(err)
 }
 
-//
-// Cause :: for a plain error :: returns an error
-//
-func TestCauseForAPlainError(t *testing.T) {
-	err := New(errMsg)
+// Cause :: for custom error type selected by interface pointer :: returns error.
+func (s *ErrorsTestSuite) TestCauseForAnInterfaceReference() {
+	err2 := testError{"2"}
+	c := newChain()
+	c.append(s.err1)
+	c.append(err2)
+	c.append(s.err3)
+	c.append(s.err4)
 
-	e := Cause(err, (*Err)(nil))
+	err := Cause(c, (*testErrorInterface)(nil))
 
-	assert.Error(t, e)
-	assert.Equal(t, e, err)
+	s.NotEmpty(err)
+	s.Equal(err2, err)
 }
 
-//
-// WithMessage :: for an empty message :: returns original error chain
-//
-func TestWithMessageForAnEmptyMessage(t *testing.T) {
-	chain := Wrap(New(errMsg))
-	chainErrs := len(chain.GetErrors())
+// Cause :: for several custom error types selected by type reference :: returns the last appended custom error.
+func (s *ErrorsTestSuite) TestCauseForSeveralCustomErrors() {
+	e2 := testError{"2"}
+	e4 := testError{"4"}
+	c := newChain()
+	c.append(s.err1)
+	c.append(e2)
+	c.append(s.err3)
+	c.append(e4)
+	c.append(s.err5)
 
-	c := WithMessage(chain, emptyMsg)
-	newChain := c.(Chainer)
-	newChainErrs := len(newChain .GetErrors())
+	err := Cause(c, (*testError)(nil))
 
-	assert.Equal(t, chainErrs, newChainErrs)
+	s.NotEmpty(err)
+	s.Equal(e4, err)
 }
 
-//
-// WithMessage :: for an empty message and plaint error (not a chainer) :: original error wrapped into chainer
-//
-func TestWithMessageForAnEmptyMessageAndPlainError(t *testing.T) {
-	err := New(errMsg)
+// Cause :: for an error that doesn't exist in a chain :: returns nil.
+func (s *ErrorsTestSuite) TestCauseForAnErrorThatDoesNotExistInChain() {
+	chain := Wrap(s.err1, s.err2)
 
-	c := WithMessage(err, emptyMsg)
-	newChain := c.(Chainer)
-	newChainErrs := len(newChain.GetErrors())
+	e := Cause(chain, (*testError)(nil))
 
-	assert.Equal(t, 1, newChainErrs)
+	s.Empty(e)
 }
 
-//
-// WithMessage :: for message and plaint error (not a chainer) :: returns original error wrapped into chainer
-//
-func TestWithMessageForAMessageAndPlainError(t *testing.T) {
-	err := New(errMsg)
+// Cause :: for a plain error :: returns an error.
+func (s *ErrorsTestSuite) TestCauseForAPlainError() {
 
-	c := WithMessage(err, errMsg)
-	newChain := c.(Chainer)
-	newChainErrs := len(newChain.GetErrors())
+	err := Cause(s.customErr, (*testError)(nil))
 
-	assert.Equal(t, 2, newChainErrs)
+	s.Error(err)
+	s.Equal(s.customErr, err)
 }
 
-//
-// WithMessage :: for message and a chainer object :: returns passed chainer with an error.
-//
-func TestWithMessageForAMessageAndAChainer(t *testing.T) {
-	chain := Wrap(New(errMsg))
+// WithMessage :: for an empty message :: returns original error chain.
+func (s *ErrorsTestSuite) TestWithMessageForAnEmptyMessage() {
+	err := Wrap(s.customErr)
+	c := err.(*chain)
+	cErrs := len(c.getErrors())
 
-	c := WithMessage(chain, errMsg)
-	newChain := c.(Chainer)
-	newChainErrs := len(newChain.GetErrors())
+	err = WithMessage(c, "")
+	newC := err.(*chain)
+	newCErrs := len(newC.getErrors())
 
-	assert.Equal(t, 2, newChainErrs)
+	s.Equal(cErrs, newCErrs)
 }
 
-//
-// customError is a custom error type for tests.
-//
-type customError struct {
-	msg string
+// WithMessage :: for an empty message and an error (not a chainer) :: returns a chain with the error.
+func (s *ErrorsTestSuite) TestWithMessageForAnErrorAndAnEmptyMessage() {
+
+	err := WithMessage(s.customErr, "")
+	c := err.(*chain)
+	cErrs := len(c.getErrors())
+
+	s.Equal(1, cErrs)
 }
 
-//
-// customMessenger is an interface for a customError.
-//
-type customMessenger interface {
-	GetMessage() string
+// WithMessage :: for message and an error (not a chainer) :: returns a chain with two errors.
+func (s *ErrorsTestSuite) TestWithMessageAnErrorAndAMessage() {
+
+	err := WithMessage(s.customErr, "error message")
+	c := err.(*chain)
+	cErrs := len(c.getErrors())
+
+	s.Equal(2, cErrs)
 }
 
-//
-// Chain implements error interface.
-//
-func (e customError) Error () string {
+// WithMessage :: for message and a chain object :: returns passed chain instance with a new error for the message.
+func (s *ErrorsTestSuite) TestWithMessageForAMessageAndAChainInstance() {
+	err := Wrap(s.customErr)
 
-	return e.msg
+	err = WithMessage(err, "error message")
+	c := err.(*chain)
+	cErrs := len(c.getErrors())
+
+	s.Equal(2, cErrs)
 }
 
-//
-// GetMessage implements customMessenger interface
-//
-func (e customError) GetMessage() string {
-
-	return e.msg
+// testErrorInterface is an interface for a testError.
+type testErrorInterface interface {
+	Message() string
 }
+
+// testError is a custom test error type.
+type testError struct{ msg string }
+
+// Error implements error interface.
+func (e testError) Error() string { return e.msg }
+
+// Message implements testErrorInterface.
+func (e testError) Message() string { return e.msg }

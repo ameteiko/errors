@@ -4,107 +4,93 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 )
 
-//
-// Chain.Format :: with %s flag for an empty object :: returns an empty string
-//
-func TestFormatSFlaggedForAnEmptyErrorObject(t *testing.T) {
-	err := NewChain()
-
-	o := fmt.Sprintf("%s", err)
-
-	assert.Empty(t, o)
+// ChainTestSuite is a test suite for all chain test errors.
+type ChainTestSuite struct {
+	suite.Suite
+	err1 error
+	err2 error
+	err3 error
+	err4 error
+	err5 error
 }
 
-//
-// Chain.Format :: with %v flag for an empty object :: returns an empty string
-//
-func TestFormatVFlaggedForAnEmptyErrorObject(t *testing.T) {
-	err := NewChain()
-
-	o := fmt.Sprintf("%v", err)
-
-	assert.Empty(t, o)
+// TestChainTestSuite runs all the tests from the ChainTestSuite.
+func TestChainTestSuite(t *testing.T) {
+	suite.Run(t, new(ChainTestSuite))
 }
 
-//
-// Chain.Format :: with %s flag for an object with single value :: returns expected error message
-//
-func TestFormatSFlaggedForASingleErrorObject(t *testing.T) {
-	errMsg := "some error"
-	e := fmt.Errorf(errMsg)
-
-	err := NewChain()
-	err.Append(e)
-	o := fmt.Sprintf("%s", err)
-
-	assert.Equal(t, errMsg, o)
+// SetupSuite performs the suite initialization.
+func (s *ChainTestSuite) SetupSuite() {
+	s.err1 = fmt.Errorf("1")
+	s.err2 = fmt.Errorf("2")
+	s.err3 = fmt.Errorf("3")
+	s.err4 = fmt.Errorf("4")
+	s.err5 = fmt.Errorf("5")
 }
 
-//
-// Chain.Format :: with %s flag for an object with several values :: returns expected error message
-//
-func TestFormatSFlaggedForAMultivaluedErrorObject(t *testing.T) {
-	errMsg1 := "some first error"
-	errMsg2 := "some second error"
-	e1 := fmt.Errorf(errMsg1)
-	e2 := fmt.Errorf(errMsg2)
-	expectedError := fmt.Sprintf("%s : %s", errMsg2, errMsg1)
+// chain.Format :: with %s flag for an empty chain :: returns an empty string.
+func (s *ChainTestSuite) TestFormatSFlaggedForAnEmptyChain() {
+	c := newChain()
 
-	err := NewChain()
-	err.Append(e1)
-	err.Append(e2)
-	o := fmt.Sprintf("%s", err)
+	o := fmt.Sprintf("%s", c)
 
-	assert.Equal(t, expectedError, o)
+	s.Empty(o)
 }
 
-//
-// Chain.Format :: with %v flag for an object with several values :: returns expected error message
-//
-func TestFormatVFlaggedForAMultivaluedErrorObject(t *testing.T) {
-	errMsg1 := "some first error"
-	errMsg2 := "some second error"
-	e1 := fmt.Errorf(errMsg1)
-	e2 := fmt.Errorf(errMsg2)
-	expectedError := fmt.Sprintf("%s : %s", errMsg2, errMsg1)
+// chain.Format :: with %v flag for an empty object :: returns an empty string.
+func (s *ChainTestSuite) TestFormatVFlaggedForAnEmptyChain() {
+	c := newChain()
 
-	err := NewChain()
-	err.Append(e1)
-	err.Append(e2)
-	o := fmt.Sprintf("%v", err)
+	o := fmt.Sprintf("%v", c)
 
-	assert.Equal(t, expectedError, o)
+	s.Empty(o)
 }
 
-//
-// Chain.Append, Chain.prependError :: with different ordering :: returns an expected order
-//
-func TestAppendPrependError(t *testing.T) {
-	err1 := fmt.Errorf("1")
-	err2 := fmt.Errorf("2")
-	err3 := fmt.Errorf("3")
-	err4 := fmt.Errorf("4")
-	err5 := fmt.Errorf("5")
+// chain.Format :: with %s flag for a chain with a single value :: returns expected error message.
+func (s *ChainTestSuite) TestFormatSFlaggedForASingleErrorObject() {
+	c := newChain()
+	c.append(s.err1)
 
-	err := NewChain()
-	err.Append(err3).Append(err4).Prepend(err2).Prepend(err1).Append(err5)
-	o := fmt.Sprintf("%s", err)
+	o := fmt.Sprintf("%s", c)
 
-	assert.Equal(t, "5 : 4 : 3 : 2 : 1", o)
+	s.Equal("1", o)
 }
 
-//
-// Chain.WithMessage :: with message :: returns an expected error
-//
-func TestWithMessage(t *testing.T) {
-	err1 := fmt.Errorf("1")
-	err2 := fmt.Errorf("2")
+// chain.Format :: with %s flag for a chain with several values :: returns expected error message.
+func (s *ChainTestSuite) TestFormatSFlaggedForAMultivaluedErrorObject() {
+	c := newChain()
+	c.append(s.err1)
+	c.append(s.err2)
 
-	err := NewChain().Append(err1).Append(err2).WithMessage("3")
-	o := fmt.Sprintf("%s", err)
+	o := fmt.Sprintf("%s", c)
 
-	assert.Equal(t, "3 : 2 : 1", o)
+	s.Equal("2 : 1", o)
+}
+
+// chain.Format :: with %v flag for an object with several values :: returns expected error message.
+func (s *ChainTestSuite) TestFormatVFlaggedForAMultivaluedErrorObject() {
+	c := newChain()
+	c.append(s.err1)
+	c.append(s.err2)
+
+	o := fmt.Sprintf("%v", c)
+
+	s.Equal("2 : 1", o)
+}
+
+// chain.append, chain.prepend :: with different ordering :: returns an expected order.
+func (s *ChainTestSuite) TestAppendPrependError() {
+	c := newChain()
+	c.append(s.err3)
+	c.append(s.err4)
+	c.prepend(s.err2)
+	c.prepend(s.err1)
+	c.append(s.err5)
+
+	o := fmt.Sprintf("%s", c)
+
+	s.Equal("5 : 4 : 3 : 2 : 1", o)
 }

@@ -6,94 +6,50 @@ import (
 	"github.com/ameteiko/errors/stack"
 )
 
-//
-// Chain formatting constants.
-//
 const (
-	Indent             = "\t"
-	ContextEntryFormat = Indent + "↪︎ %+v\n"
+	errorMessageSeparator = " : " // a separator value used to join error messages. (outer error : inner error)
 )
 
-//
-// Chain is errors chain wrapping object.
-//
-type Chain struct {
-	errs []error // The chain of errors in reverse order so the oldest error goes first.
-
-	stack *stack.Stack // The stacktrace at invocation moment.
+// chain is the aggregate for the application errors chained in the order they arose.
+type chain struct {
+	errs  []error      // The collection of the errors.
+	stack *stack.Stack // The stacktrace at the chain initialization moment.
 }
 
-//
-// NewChain creates a new Chain object.
-//
-func NewChain() *Chain {
-
-	return &Chain{stack: stack.Get()}
+// newChain returns a new chain instance.
+func newChain() *chain {
+	return &chain{stack: stack.Get()}
 }
 
-//
-// Prepend adds an error to the bottom of the chain.
-//
-func (c *Chain) Prepend(err error) *Chain {
-	errs := make([]error, len(c.errs)+1)
-	errs[0] = err
-	copy(errs[1:], c.errs)
-	c.errs = errs
-
-	return c
-}
-
-//
-// Append adds an error to the top of the chain.
-//
-func (c *Chain) Append(err error) *Chain {
-	c.errs = append(c.errs, err)
-
-	return c
-}
-
-//
-// Format formats the error chain.
-//
-func (c *Chain) Format(state fmt.State, verb rune) {
-	switch verb {
-	case 'v':
-		if state.Flag('+') {
-			fmt.Fprintln(state, c.Error())
-			c.stack.Format(state, verb)
-			return
-		}
-		fallthrough
-	default:
-		state.Write([]byte(c.Error()))
-
+// Format formats the error message for the error chain.
+// On %+v it additionally prints the error stacktrace.
+func (c *chain) Format(state fmt.State, verb rune) {
+	fmt.Fprint(state, c.Error())
+	if verb == 'v' && state.Flag('+') {
+		fmt.Fprintln(state)
+		c.stack.Format(state, verb)
 	}
 }
 
-//
-// Error returns a compressed error message for the error chain.
-//
-func (c *Chain) Error() string {
-	var errStr string
-	if 0 == len(c.errs) {
+// Error returns an error message for the error chain.
+func (c *chain) Error() (errMsg string) {
+	if len(c.errs) == 0 {
 		return ""
 	}
 
-	for i, err := range c.GetErrors() {
+	for i, err := range c.getErrors() {
 		if i == 0 {
-			errStr = err.Error()
+			errMsg = err.Error()
 			continue
 		}
-		errStr += " : " + err.Error()
+		errMsg += errorMessageSeparator + err.Error()
 	}
 
-	return errStr
+	return errMsg
 }
 
-//
-// GetErrors returns the error chain.
-//
-func (c *Chain) GetErrors() []error {
+// getErrors returns the error chain in reverse order.
+func (c *chain) getErrors() []error {
 	errsLen := len(c.errs)
 	errs := make([]error, errsLen)
 	for i := range c.errs {
@@ -103,10 +59,15 @@ func (c *Chain) GetErrors() []error {
 	return errs
 }
 
-//
-// WithMessage returns a chain with attached formatted message.
-//
-func (c *Chain) WithMessage(format string, args ...interface{}) error {
+// prepend adds an error to the bottom of the chain.
+func (c *chain) prepend(err error) {
+	errs := make([]error, len(c.errs)+1)
+	errs[0] = err
+	copy(errs[1:], c.errs)
+	c.errs = errs
+}
 
-	return WithMessage(c, format, args...)
+// append adds an error to the top of the chain.
+func (c *chain) append(err error) {
+	c.errs = append(c.errs, err)
 }
