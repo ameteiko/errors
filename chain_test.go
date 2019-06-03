@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/suite"
 )
 
-// ChainTestSuite is a test suite for all chain test errors.
+// ChainTestSuite is a test suite for all errChain test errors.
 type ChainTestSuite struct {
 	suite.Suite
 	err1 error
@@ -31,7 +31,7 @@ func (s *ChainTestSuite) SetupSuite() {
 	s.err5 = fmt.Errorf("5")
 }
 
-// chain.Format :: with %s flag for an empty chain :: returns an empty string.
+// errChain.Format :: with %s flag for an empty errChain :: returns an empty string.
 func (s *ChainTestSuite) TestFormatSFlaggedForAnEmptyChain() {
 	c := newChain()
 
@@ -40,7 +40,7 @@ func (s *ChainTestSuite) TestFormatSFlaggedForAnEmptyChain() {
 	s.Empty(o)
 }
 
-// chain.Format :: with %v flag for an empty object :: returns an empty string.
+// errChain.Format :: with %v flag for an empty object :: returns an empty string.
 func (s *ChainTestSuite) TestFormatVFlaggedForAnEmptyChain() {
 	c := newChain()
 
@@ -49,7 +49,7 @@ func (s *ChainTestSuite) TestFormatVFlaggedForAnEmptyChain() {
 	s.Empty(o)
 }
 
-// chain.Format :: with %s flag for a chain with a single value :: returns expected error message.
+// errChain.Format :: with %s flag for a errChain with a single value :: returns expected error message.
 func (s *ChainTestSuite) TestFormatSFlaggedForASingleErrorObject() {
 	c := newChain()
 	c.append(s.err1)
@@ -59,7 +59,7 @@ func (s *ChainTestSuite) TestFormatSFlaggedForASingleErrorObject() {
 	s.Equal("1", o)
 }
 
-// chain.Format :: with %s flag for a chain with several values :: returns expected error message.
+// errChain.Format :: with %s flag for a errChain with several values :: returns expected error message.
 func (s *ChainTestSuite) TestFormatSFlaggedForAMultivaluedErrorObject() {
 	c := newChain()
 	c.append(s.err1)
@@ -70,7 +70,7 @@ func (s *ChainTestSuite) TestFormatSFlaggedForAMultivaluedErrorObject() {
 	s.Equal("2 : 1", o)
 }
 
-// chain.Format :: with %v flag for an object with several values :: returns expected error message.
+// errChain.Format :: with %v flag for an object with several values :: returns expected error message.
 func (s *ChainTestSuite) TestFormatVFlaggedForAMultivaluedErrorObject() {
 	c := newChain()
 	c.append(s.err1)
@@ -81,7 +81,7 @@ func (s *ChainTestSuite) TestFormatVFlaggedForAMultivaluedErrorObject() {
 	s.Equal("2 : 1", o)
 }
 
-// chain.append, chain.prepend :: with different ordering :: returns an expected order.
+// errChain.append, errChain.prepend :: with different ordering :: returns an expected order.
 func (s *ChainTestSuite) TestAppendPrependError() {
 	c := newChain()
 	c.append(s.err3)
