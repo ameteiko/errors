@@ -7,10 +7,10 @@ import (
 	"reflect"
 )
 
-// Wrap wraps variadic number of errors into an error errChain.
+// Wrap wraps variadic number of errors into an error chain.
 func Wrap(errs ...error) error {
 	var (
-		enchainer          *errChain
+		enchainer          *chain
 		doesEnchainerExist bool
 		enchainerIndex     int
 	)
@@ -19,7 +19,7 @@ func Wrap(errs ...error) error {
 	for i := range errs {
 		enchainerIndex = len(errs) - i - 1
 		err := errs[enchainerIndex]
-		enchainer, doesEnchainerExist = err.(*errChain)
+		enchainer, doesEnchainerExist = err.(*chain)
 		if doesEnchainerExist {
 			break
 		}
@@ -37,7 +37,7 @@ func Wrap(errs ...error) error {
 	// prepend errors
 	for i := range errs[:enchainerIndex] {
 		err := errs[enchainerIndex-i-1]
-		anotherEnchainer, isAnotherEnchainer := err.(*errChain)
+		anotherEnchainer, isAnotherEnchainer := err.(*chain)
 		if !isAnotherEnchainer {
 			enchainer.prepend(err)
 			continue
@@ -59,16 +59,16 @@ func Wrap(errs ...error) error {
 // To returns a first error that implements causer.
 // causer is always must be a pointer to either a structure or interface.
 
-// chainErr is supposed to be a errChain instance, but it can also be any error.
+// chainErr is supposed to be a chain instance, but it can also be any error.
 // targetErr is the error to be searched over the err. It can be: pointer to the error type, interface, or error value.
 func To(chainedErr error, targetErr interface{}) error {
 	if chainedErr == nil || targetErr == nil {
 		return nil
 	}
 
-	chain, ok := chainedErr.(*errChain)
+	chain, ok := chainedErr.(*chain)
 	if !ok {
-		// The chainedErr is not an errChain instance. Check if it matches targetErr itself.
+		// The chainedErr is not an chain instance. Check if it matches targetErr itself.
 		if errorMatches(chainedErr, targetErr) {
 			return chainedErr
 		}
@@ -90,9 +90,9 @@ func Tos(chainedErr error, targetErr interface{}) (errs []error) {
 		return nil
 	}
 
-	chain, ok := chainedErr.(*errChain)
+	chain, ok := chainedErr.(*chain)
 	if !ok {
-		// The chainedErr is not an errChain instance. Check if it matches targetErr itself.
+		// The chainedErr is not an chain instance. Check if it matches targetErr itself.
 		if errorMatches(chainedErr, targetErr) {
 			return []error{chainedErr}
 		}
@@ -114,7 +114,7 @@ func WithMessage(err error, format string, args ...interface{}) error {
 		return Wrap(err, fmt.Errorf(format, args...))
 	}
 
-	if chain, ok := err.(*errChain); ok {
+	if chain, ok := err.(*chain); ok {
 		return chain
 	}
 

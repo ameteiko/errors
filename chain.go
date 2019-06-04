@@ -7,23 +7,23 @@ import (
 )
 
 const (
-	errorMessageSeparator = " : " // a separator value used to join error messages. (outer error : inner error)
+	errorMessageSeparator = " : " // a separator used to join error messages in form of (outer error : inner error)
 )
 
-// errChain is the aggregate for the application errors chained in the order they arose.
-type errChain struct {
-	errs  []error      // The collection of the errors.
-	stack *stack.Stack // The stacktrace at the errChain initialization moment.
+// chain is the wrapper the application errors chained in the order they arose.
+type chain struct {
+	errs  []error       // The collection of the errors.
+	stack fmt.Formatter // The stacktrace at the chain creation moment.
 }
 
-// newChain returns a new errChain instance.
-func newChain() *errChain {
-	return &errChain{stack: stack.Get()}
+// newChain returns a new chain instance.
+func newChain() *chain {
+	return &chain{stack: stack.Get()}
 }
 
-// Format formats the error message for the error errChain.
-// On %+v it additionally prints the error stacktrace.
-func (c *errChain) Format(state fmt.State, verb rune) {
+// Format formats a chain error message.
+// On %+v it additionally prints out the error stacktrace.
+func (c *chain) Format(state fmt.State, verb rune) {
 	fmt.Fprint(state, c.Error())
 	if verb == 'v' && state.Flag('+') {
 		fmt.Fprintln(state)
@@ -31,8 +31,8 @@ func (c *errChain) Format(state fmt.State, verb rune) {
 	}
 }
 
-// Error returns an error message for the error errChain.
-func (c *errChain) Error() (errMsg string) {
+// Error returns a chain error message.
+func (c *chain) Error() (errMsg string) {
 	if len(c.errs) == 0 {
 		return ""
 	}
@@ -48,8 +48,8 @@ func (c *errChain) Error() (errMsg string) {
 	return errMsg
 }
 
-// getErrors returns the error errChain in reverse order.
-func (c *errChain) getErrors() []error {
+// getErrors returns the error chain in reverse order.
+func (c *chain) getErrors() []error {
 	errsLen := len(c.errs)
 	errs := make([]error, errsLen)
 	for i := range c.errs {
@@ -59,15 +59,15 @@ func (c *errChain) getErrors() []error {
 	return errs
 }
 
-// prepend adds an error to the bottom of the errChain.
-func (c *errChain) prepend(err error) {
+// prepend adds an error to the bottom of the chain.
+func (c *chain) prepend(err error) {
 	errs := make([]error, len(c.errs)+1)
 	errs[0] = err
 	copy(errs[1:], c.errs)
 	c.errs = errs
 }
 
-// append adds an error to the top of the errChain.
-func (c *errChain) append(err error) {
+// append adds an error to the top of the chain.
+func (c *chain) append(err error) {
 	c.errs = append(c.errs, err)
 }
