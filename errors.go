@@ -1,81 +1,177 @@
-// Package errors provides the typed errors checking functionality.
-// TODO: Write package comment here.
+// Package errors provides error context wrappers to for handling errors in Go.
+//
+// The principle of handling errors is to either handle the error when it happens or to delegate its handling to upper
+// layer via providing current context. The purpose of this package is to provide a way to attach some additional
+// context to the error.
+//
+// The package's core is the internal type errors.queue which is exposed to clients as error interface. All
+// application error handling is supposed to operate with errors using Wrap(), WithMessage() or WrapWithMessage()
+// providing the existing error and attaching some additional context to it. Each of these methods either create a new
+// error queue instance if it doesn't exist or uses existing one.
+//
+// Once the error reaches to layer to handle the error, one of functions Fetch(), FetchByType() should be used to
+// examine the error on having one of contexts.
 package errors
 
 import (
+	"errors"
 	"fmt"
 	"reflect"
 )
 
-// Wrap wraps variadic number of errors into an error chain.
+// New returns error object wrapped with a stacktrace.
+func New(msg string) error {
+	return Wrap(errors.New(msg))
+}
+
+// isErrNil returns true if error is nil.
+func isErrNil(err error) bool {
+	val := reflect.ValueOf(err)
+	if err == nil || (val.Kind() == reflect.Ptr && val.IsNil()) {
+		return true
+	}
+	return false
+}
+
+// Wrap wraps variadic number of errors into an error queue providing context about the error.
+//
+// This function wraps several errors into internal queue object that satisfies the error interface and is inspectable
+// by Fetch(), FetchByType() functions.
+// It is used to provide extended local context to the existing error object.
+// If several queue instances are passed, then the they will be disintegrated and all the errors from them will be
+// injected into the last found queue object.
+// TODO: think on removing the side-effects of changing the queue objects.
 func Wrap(errs ...error) error {
 	var (
-		enchainer          *chain
-		doesEnchainerExist bool
-		enchainerIndex     int
+		q    *queue
+		qIdx int
+		ok   bool
 	)
 
-	// Find enchainer instance if exists.
+	// Ignore all nil errors from the list.
+	ee := make([]error, 0, len(errs))
+	for i := 0; i < len(errs); i++ {
+		if !isErrNil(errs[i]) {
+			ee = append(ee, errs[i])
+		}
+	}
+	errs = ee
+
+	if len(errs) == 0 {
+		return nil
+	}
+
+	// Find an existing queue instance if exists. Iterating in reverse order.
 	for i := range errs {
-		enchainerIndex = len(errs) - i - 1
-		err := errs[enchainerIndex]
-		enchainer, doesEnchainerExist = err.(*chain)
-		if doesEnchainerExist {
+		qIdx = len(errs) - i - 1
+		err := errs[qIdx]
+		if q, ok = err.(*queue); ok {
 			break
 		}
 	}
 
-	if !doesEnchainerExist {
-		enchainer = newChain()
-		for _, err := range errs {
-			enchainer.append(err)
-		}
-
-		return enchainer
+	// There is no error queue, so create one and inject all errors into it.
+	if q == nil {
+		q = newQueue()
+		q.errs = errs
+		return q
 	}
 
-	// prepend errors
-	for i := range errs[:enchainerIndex] {
-		err := errs[enchainerIndex-i-1]
-		anotherEnchainer, isAnotherEnchainer := err.(*chain)
-		if !isAnotherEnchainer {
-			enchainer.prepend(err)
-			continue
-		}
-
-		for _, innerEnchainerError := range anotherEnchainer.getErrors() {
-			enchainer.prepend(innerEnchainerError)
-		}
+	// Prepend errors before qIdx in reverse order.
+	for i := range errs[:qIdx] {
+		err := errs[qIdx-i-1]
+		q.prepend(err)
 	}
 
-	// append errors
-	for _, err := range errs[enchainerIndex+1:] {
-		enchainer.append(err)
-	}
+	// Append errors after the queue instance in direct order.
+	q.errs = append(q.errs, errs[qIdx+1:]...)
 
-	return enchainer
+	return q
 }
 
-// To returns a first error that implements causer.
-// causer is always must be a pointer to either a structure or interface.
+// WithMessage returns an error wrapped with message.
+// This function is used to attach some context in a form of formatted to existing error.
+func WithMessage(err error, format string, args ...interface{}) error {
+	if format == "" || isErrNil(err) {
+		return err
+	}
 
-// chainErr is supposed to be a chain instance, but it can also be any error.
-// targetErr is the error to be searched over the err. It can be: pointer to the error type, interface, or error value.
-func To(chainedErr error, targetErr interface{}) error {
-	if chainedErr == nil || targetErr == nil {
+	return Wrap(err, fmt.Errorf(format, args...))
+}
+
+// WrapWithMessage wraps two errors with message.
+// It is used when an external call returns a 3rd-party error, that needs to be wrapped not only into an application
+// error but with additional context too.
+func WrapWithMessage(err1, err2 error, format string, args ...interface{}) error {
+	return WithMessage(Wrap(err1, err2), format, args...)
+}
+
+// validateErrors returns flags whether errors are valid (meaning not nil) and match each other.
+func validateErrors(sourceErr, targetErr error) (valid bool, matched bool) {
+	isSourceNil := isErrNil(sourceErr)
+	isTargetNil := isErrNil(targetErr)
+	if isSourceNil && isTargetNil {
+		return false, true
+	}
+	if isSourceNil || isTargetNil {
+		return false, false
+	}
+
+	if sourceErr == targetErr || sourceErr.Error() == targetErr.Error() {
+		return true, true
+	}
+
+	return true, false
+}
+
+// Fetch returns targetErr from the err queue.
+// Provided that qErr is an error queue, this function iterates over all queue errors and returns the first matched one.
+func Fetch(qErr, targetErr error) error {
+	valid, matched := validateErrors(qErr, targetErr)
+	if !valid {
+		return nil
+	} else if matched {
+		return targetErr
+	}
+
+	q, ok := qErr.(*queue)
+	if !ok {
 		return nil
 	}
 
-	chain, ok := chainedErr.(*chain)
+	for _, err := range q.getErrors() {
+		if _, matched := validateErrors(err, targetErr); matched {
+			return targetErr
+		}
+	}
+
+	return nil
+}
+
+// FetchByType returns a first error from the error queue that implements or assignable to targetErr.
+// targetErr must be a pointer to either a structure or interface.
+//
+// qErr is supposed to be a queue instance, but it can also be any error object.
+// targetErr is the error to be searched over the err. It can be: pointer to the error type, interface, or error value.
+func FetchByType(qErr error, targetErr interface{}) error {
+	if isErrNil(qErr) {
+		return nil
+	}
+
+	if targetErr == nil {
+		return nil
+	}
+
+	q, ok := qErr.(*queue)
 	if !ok {
-		// The chainedErr is not an chain instance. Check if it matches targetErr itself.
-		if errorMatches(chainedErr, targetErr) {
-			return chainedErr
+		// The qErr is not a queue instance but error, so check if it matches target error.
+		if errorMatches(qErr, targetErr) {
+			return qErr
 		}
 		return nil
 	}
 
-	for _, e := range chain.getErrors() {
+	for _, e := range q.getErrors() {
 		if errorMatches(e, targetErr) {
 			return e
 		}
@@ -84,69 +180,20 @@ func To(chainedErr error, targetErr interface{}) error {
 	return nil
 }
 
-// Tos returns the list of matching errors.
-func Tos(chainedErr error, targetErr interface{}) (errs []error) {
-	if chainedErr == nil || targetErr == nil {
-		return nil
-	}
-
-	chain, ok := chainedErr.(*chain)
-	if !ok {
-		// The chainedErr is not an chain instance. Check if it matches targetErr itself.
-		if errorMatches(chainedErr, targetErr) {
-			return []error{chainedErr}
-		}
-		return nil
-	}
-
-	for _, e := range chain.getErrors() {
-		if errorMatches(e, targetErr) {
-			errs = append(errs, e)
-		}
-	}
-
-	return errs
-}
-
-// WithMessage returns an error wrapped with message.
-func WithMessage(err error, format string, args ...interface{}) error {
-	if format != "" {
-		return Wrap(err, fmt.Errorf(format, args...))
-	}
-
-	if chain, ok := err.(*chain); ok {
-		return chain
-	}
-
-	return Wrap(err)
-}
-
-// WrapWithMessage wraps two errors with message.
-func WrapWithMessage(err1, err2 error, format string, args ...interface{}) error {
-	return WithMessage(Wrap(err1, err2), format, args...)
-}
-
 // errorMatches returns true if targetErr matches sourceErr.
 // target parameter options:
 //     - errorInstance
 //     - (*errorInterface)(nil)
 //     - (*customErrorStruct)(nil)
 // TODO: apply some optimization here not to calculate targetType, targetElem for each iteration.
+// nolint:gocyclo
 func errorMatches(sourceErr error, target interface{}) bool {
-	// Invariant verification.
-	if sourceErr == nil || target == nil {
+	sourceType, _, sourceConversionErr := getTypeElem(sourceErr)
+	targetType, targetElem, targetConversionErr := getTypeElem(target)
+	if sourceConversionErr != nil || targetConversionErr != nil {
 		return false
 	}
 
-	// Check if target is of type error.
-	if targetErr, ok := target.(error); ok && sourceErr == targetErr {
-		return true
-	}
-
-	// target must be a nil pointer to either interface or an error struct.
-	targetType := reflect.TypeOf(target)
-	targetElem := targetType.Elem()
-	sourceType := reflect.TypeOf(sourceErr)
 	doesImplement := reflect.Interface == targetElem.Kind() && sourceType.Implements(targetElem)
 	isTypeOf := reflect.Struct == targetElem.Kind() &&
 		(sourceType.AssignableTo(targetType) || sourceType.AssignableTo(targetElem))
@@ -155,4 +202,21 @@ func errorMatches(sourceErr error, target interface{}) bool {
 	}
 
 	return false
+}
+
+func getTypeElem(obj interface{}) (tp reflect.Type, el reflect.Type, err error) {
+	objType := reflect.TypeOf(obj)
+	if objType == nil {
+		return nil, nil, errors.New("obj is nil")
+	}
+	objTypeKind := objType.Kind()
+	if objTypeKind != reflect.Struct && objTypeKind != reflect.Ptr && objTypeKind != reflect.Interface {
+		return nil, nil, errors.New("must be valid obj")
+	}
+
+	if objTypeKind == reflect.Struct {
+		return reflect.New(objType).Type(), objType, nil
+	}
+
+	return objType, objType.Elem(), nil
 }

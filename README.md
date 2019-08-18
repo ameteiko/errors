@@ -1,3 +1,3 @@
 # Go error package
 
-Description coming soon
+Coming soon...
