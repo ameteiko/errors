@@ -14,23 +14,13 @@
 package errors
 
 import (
-	"errors"
 	"fmt"
 	"reflect"
 )
 
 // New returns error object wrapped with a stacktrace.
 func New(msg string) error {
-	return Wrap(errors.New(msg))
-}
-
-// isErrNil returns true if error is nil.
-func isErrNil(err error) bool {
-	val := reflect.ValueOf(err)
-	if err == nil || (val.Kind() == reflect.Ptr && val.IsNil()) {
-		return true
-	}
-	return false
+	return Wrap(fmt.Errorf(msg))
 }
 
 // Wrap wraps variadic number of errors into an error queue providing context about the error.
@@ -40,59 +30,36 @@ func isErrNil(err error) bool {
 // It is used to provide extended local context to the existing error object.
 // If several queue instances are passed, then the they will be disintegrated and all the errors from them will be
 // injected into the last found queue object.
-// TODO: think on removing the side-effects of changing the queue objects.
 func Wrap(errs ...error) error {
-	var (
-		q    *queue
-		qIdx int
-		ok   bool
-	)
-
-	// Ignore all nil errors from the list.
-	ee := make([]error, 0, len(errs))
-	for i := 0; i < len(errs); i++ {
-		if !isErrNil(errs[i]) {
-			ee = append(ee, errs[i])
+	var ee []error
+	for _, err := range errs {
+		if isErrNil(err) {
+			continue
 		}
-	}
-	errs = ee
 
-	if len(errs) == 0 {
+		if q, ok := err.(*queue); ok {
+			ee = append(ee, q.errs...)
+			continue
+		}
+
+		ee = append(ee, err)
+	}
+
+	if len(ee) == 0 {
 		return nil
 	}
 
-	// Find an existing queue instance if exists. Iterating in reverse order.
-	for i := range errs {
-		qIdx = len(errs) - i - 1
-		err := errs[qIdx]
-		if q, ok = err.(*queue); ok {
-			break
-		}
-	}
-
-	// There is no error queue, so create one and inject all errors into it.
-	if q == nil {
-		q = newQueue()
-		q.errs = errs
-		return q
-	}
-
-	// Prepend errors before qIdx in reverse order.
-	for i := range errs[:qIdx] {
-		err := errs[qIdx-i-1]
-		q.prepend(err)
-	}
-
-	// Append errors after the queue instance in direct order.
-	q.errs = append(q.errs, errs[qIdx+1:]...)
-
-	return q
+	return &queue{errs: ee}
 }
 
 // WithMessage returns an error wrapped with message.
-// This function is used to attach some context in a form of formatted to existing error.
+// This function is used to attach some context in a form of formatted text to an existing error.
 func WithMessage(err error, format string, args ...interface{}) error {
-	if format == "" || isErrNil(err) {
+	if isErrNil(err) {
+		return nil
+	}
+
+	if format == "" {
 		return err
 	}
 
@@ -106,41 +73,23 @@ func WrapWithMessage(err1, err2 error, format string, args ...interface{}) error
 	return WithMessage(Wrap(err1, err2), format, args...)
 }
 
-// validateErrors returns flags whether errors are valid (meaning not nil) and match each other.
-func validateErrors(sourceErr, targetErr error) (valid bool, matched bool) {
-	isSourceNil := isErrNil(sourceErr)
-	isTargetNil := isErrNil(targetErr)
-	if isSourceNil && isTargetNil {
-		return false, true
-	}
-	if isSourceNil || isTargetNil {
-		return false, false
-	}
-
-	if sourceErr == targetErr || sourceErr.Error() == targetErr.Error() {
-		return true, true
-	}
-
-	return true, false
-}
-
 // Fetch returns targetErr from the err queue.
 // Provided that qErr is an error queue, this function iterates over all queue errors and returns the first matched one.
 func Fetch(qErr, targetErr error) error {
-	valid, matched := validateErrors(qErr, targetErr)
-	if !valid {
+	if isErrNil(qErr) || isErrNil(targetErr) {
 		return nil
-	} else if matched {
-		return targetErr
 	}
 
 	q, ok := qErr.(*queue)
 	if !ok {
+		if compareErrs(qErr, targetErr) {
+			return targetErr
+		}
 		return nil
 	}
 
 	for _, err := range q.getErrors() {
-		if _, matched := validateErrors(err, targetErr); matched {
+		if compareErrs(err, targetErr) {
 			return targetErr
 		}
 	}
@@ -153,6 +102,7 @@ func Fetch(qErr, targetErr error) error {
 //
 // qErr is supposed to be a queue instance, but it can also be any error object.
 // targetErr is the error to be searched over the err. It can be: pointer to the error type, interface, or error value.
+// TODO: think on errors that are created by values, not by by references.
 func FetchByType(qErr error, targetErr interface{}) error {
 	if isErrNil(qErr) {
 		return nil
@@ -178,6 +128,24 @@ func FetchByType(qErr error, targetErr interface{}) error {
 	}
 
 	return nil
+}
+
+// isErrNil returns true if error object is nil.
+func isErrNil(err error) bool {
+	if err == nil {
+		return true
+	}
+	if val := reflect.ValueOf(err); val.Kind() == reflect.Ptr && val.IsNil() {
+		return true
+	}
+
+	return false
+}
+
+// compareErrs returns true if errors are the same.
+// Method Contract: sourceErr and targetErr are not nil.
+func compareErrs(sourceErr, targetErr error) bool {
+	return sourceErr.Error() == targetErr.Error()
 }
 
 // errorMatches returns true if targetErr matches sourceErr.
@@ -207,11 +175,11 @@ func errorMatches(sourceErr error, target interface{}) bool {
 func getTypeElem(obj interface{}) (tp reflect.Type, el reflect.Type, err error) {
 	objType := reflect.TypeOf(obj)
 	if objType == nil {
-		return nil, nil, errors.New("obj is nil")
+		return nil, nil, fmt.Errorf("obj is nil")
 	}
 	objTypeKind := objType.Kind()
 	if objTypeKind != reflect.Struct && objTypeKind != reflect.Ptr && objTypeKind != reflect.Interface {
-		return nil, nil, errors.New("must be valid obj")
+		return nil, nil, fmt.Errorf("must be valid obj")
 	}
 
 	if objTypeKind == reflect.Struct {

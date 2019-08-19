@@ -59,33 +59,3 @@ func (q *queue) getErrors() []error {
 
 	return errs
 }
-
-// prepend adds an error to the front of the queue.
-// If prepended error is yet another queue object, then extract all its errors and prepend them sequentially.
-func (q *queue) prepend(err error) {
-	var errsToPrepend []error
-	if errQ, ok := err.(*queue); ok {
-		// Use errQ.errs, not errQ.getErrors() to retrieve the errors in reversed order.
-		// It's crucial to keep reversed order, because errors are prepended at once with copy().
-		errsToPrepend = errQ.errs
-	} else {
-		errsToPrepend = []error{err}
-	}
-
-	errsNum := len(errsToPrepend)
-	errs := make([]error, len(q.errs)+errsNum)
-	copy(errs[:errsNum], errsToPrepend)
-	copy(errs[errsNum:], q.errs)
-	q.errs = errs
-}
-
-// append adds an error to the back of the queue.
-// If appended error is yet another queue object, then extract all its errors and append them sequentially.
-func (q *queue) append(err error) {
-	if errQ, ok := err.(*queue); ok {
-		q.errs = append(q.errs, errQ.errs...)
-		return
-	}
-
-	q.errs = append(q.errs, err)
-}

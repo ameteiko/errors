@@ -1,8 +1,8 @@
 package errors
 
 import (
-	"errors"
 	"fmt"
+	"reflect"
 	"testing"
 )
 
@@ -18,77 +18,78 @@ func (e typedError) Error() string     { return e.msg }
 func (e typedError) Message() string   { return e.msg }
 func (e *typedErrorPtr) Error() string { return e.msg }
 
-func TestValidateErrors(t *testing.T) {
+func TestWrapNotToCauseSideEffects(t *testing.T) {
 	var (
-		err1               = errors.New("1")
-		err2               = errors.New("2")
-		nilTypedErr        *typedErrorPtr
-		anotherNilTypedErr *typedErrorPtr
+		err1   = New("1")
+		err2   = New("2")
+		err3   = New("3")
+		q1     = &queue{errs: []error{err1, err2}}
+		q1copy = &queue{errs: []error{err1, err2}}
+		q2     = &queue{errs: []error{err3}}
+		q2copy = &queue{errs: []error{err3}}
+	)
+
+	q := Wrap(q1, q2)
+
+	if !reflect.DeepEqual(q1, q1copy) {
+		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q1, q1copy)
+	}
+	if !reflect.DeepEqual(q2, q2copy) {
+		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q2, q2copy)
+	}
+	if q == q1 {
+		t.Errorf("Wrap(q1, q2) must return new queue instance. q1 returned")
+	}
+	if q == q2 {
+		t.Errorf("Wrap(q1, q2) must return new queue instance. q2 returned")
+	}
+}
+
+func TestCompareErrors(t *testing.T) {
+	var (
+		err1 = New("1")
+		err2 = New("2")
 	)
 
 	tcs := []struct {
 		name                 string
 		sourceErr, targetErr error
-		valid, matched       bool
+		matched              bool
 	}{
-		{
-			name:      "ForBothNilErrors",
-			sourceErr: nil, targetErr: nil,
-			valid: false, matched: true,
-		},
-		{
-			name:      "ForNilSourceError",
-			sourceErr: nil, targetErr: err1,
-			valid: false, matched: false,
-		},
-		{
-			name:      "ForNilTargetError",
-			sourceErr: err1, targetErr: nil,
-			valid: false, matched: false,
-		},
 		{
 			name:      "ForMatchingErrors",
 			sourceErr: err1, targetErr: err1,
-			valid: true, matched: true,
+			matched: true,
 		},
 		{
 			name:      "ForNotMatchingErrors",
 			sourceErr: err2, targetErr: err1,
-			valid: true, matched: false,
+			matched: false,
 		},
 		{
 			name:      "ForAnErrorAndAMatchingErrorQueueAsSource",
 			sourceErr: &queue{errs: []error{err1}}, targetErr: err1,
-			valid: true, matched: true,
+			matched: true,
 		},
 		{
 			name:      "ForAnErrorAndAMatchingErrorQueueAsTarget",
 			sourceErr: err1, targetErr: &queue{errs: []error{err1}},
-			valid: true, matched: true,
+			matched: true,
 		},
 		{
 			name:      "ForAnErrorAndANotMatchingErrorQueueAsSource",
 			sourceErr: &queue{errs: []error{err1}}, targetErr: err2,
-			valid: true, matched: false,
-		},
-		{
-			name:      "ForANilErrorByReference",
-			sourceErr: nilTypedErr, targetErr: anotherNilTypedErr,
-			valid: false, matched: true,
+			matched: false,
 		},
 	}
 
 	for i := range tcs {
 		tc := tcs[i]
 		t.Run(tc.name, func(t *testing.T) {
-			valid, match := validateErrors(tc.sourceErr, tc.targetErr)
-
-			if tc.valid != valid {
-				t.Errorf("validateErrors(%v, %v).valid != %v, got %v", tc.sourceErr, tc.targetErr, tc.valid, valid)
-			}
+			match := compareErrs(tc.sourceErr, tc.targetErr)
 
 			if tc.matched != match {
-				t.Errorf("validateErrors(%v, %v).match != %v, got %v", tc.sourceErr, tc.targetErr, tc.matched, match)
+				t.Errorf("compareErrs(%v, %v) != %v", tc.sourceErr, tc.targetErr, tc.matched)
 			}
 		})
 	}
@@ -96,9 +97,9 @@ func TestValidateErrors(t *testing.T) {
 
 func TestFetch(t *testing.T) {
 	var (
-		err1 = errors.New("1")
-		err2 = errors.New("2")
-		err3 = errors.New("3")
+		err1 = New("1")
+		err2 = New("2")
+		err3 = New("3")
 	)
 
 	tcs := []struct {
@@ -170,7 +171,7 @@ func TestFetch(t *testing.T) {
 
 func TestErrorMatches(t *testing.T) {
 	var (
-		err1 = errors.New("1")
+		err1 = New("1")
 	)
 
 	tcs := []struct {
@@ -186,7 +187,7 @@ func TestErrorMatches(t *testing.T) {
 		},
 		{
 			name:      "ForDifferentErrorsWithSameValue",
-			sourceErr: errors.New("error"), targetErr: errors.New("error"),
+			sourceErr: New("error"), targetErr: New("error"),
 			matched: true,
 		},
 		{
@@ -240,12 +241,12 @@ func TestErrorMatches(t *testing.T) {
 
 func TestWrap(t *testing.T) {
 	var (
-		err1  = errors.New("1")
-		err2  = errors.New("2")
-		err31 = errors.New("31")
-		err32 = errors.New("32")
-		err4  = errors.New("4")
-		err5  = errors.New("4")
+		err1  = New("1")
+		err2  = New("2")
+		err31 = New("31")
+		err32 = New("32")
+		err4  = New("4")
+		err5  = New("4")
 	)
 
 	tcs := []struct {
@@ -326,7 +327,7 @@ func TestWrap(t *testing.T) {
 
 func TestWithMessage(t *testing.T) {
 	var (
-		err1 = errors.New("1")
+		err1 = New("1")
 	)
 
 	tcs := []struct {
@@ -364,13 +365,13 @@ func TestWithMessage(t *testing.T) {
 			name:   "ForAnErrorAndAMessage",
 			err:    typedError{"custom error"},
 			format: "error message",
-			res:    &queue{errs: []error{typedError{"custom error"}, errors.New("error message")}},
+			res:    &queue{errs: []error{typedError{"custom error"}, New("error message")}},
 		},
 		{
 			name:   "ForAMessageAndAnErrorQueue",
 			err:    &queue{errs: []error{err1}},
 			format: "error message",
-			res:    &queue{errs: []error{err1, errors.New("error message")}},
+			res:    &queue{errs: []error{err1, New("error message")}},
 		},
 	}
 
@@ -395,8 +396,8 @@ func TestWithMessage(t *testing.T) {
 
 func TestWrapWithMessage(t *testing.T) {
 	var (
-		err1 = errors.New("1")
-		err2 = errors.New("2")
+		err1 = New("1")
+		err2 = New("2")
 	)
 
 	tcs := []struct {
@@ -422,7 +423,7 @@ func TestWrapWithMessage(t *testing.T) {
 			name: "ForAMessage",
 			err1: err1, err2: err2,
 			format: "message",
-			res:    &queue{errs: []error{err1, err2, errors.New("message")}},
+			res:    &queue{errs: []error{err1, err2, New("message")}},
 		},
 	}
 
@@ -468,7 +469,7 @@ func TestIsErrNil(t *testing.T) {
 		},
 		{
 			name: "ForANotNilError",
-			err:  errors.New("some error"),
+			err:  New("some error"),
 			res:  false,
 		},
 		{
@@ -496,9 +497,9 @@ func TestIsErrNil(t *testing.T) {
 
 func TestFetchByType(t *testing.T) {
 	var (
-		err1 = errors.New("1")
-		err2 = errors.New("2")
-		err3 = errors.New("3")
+		err1 = New("1")
+		err2 = New("2")
+		err3 = New("3")
 	)
 
 	tcs := []struct {
