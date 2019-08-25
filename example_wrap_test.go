@@ -35,11 +35,15 @@ func ExampleFetch() {
 	tooShortErr := Fetch(err, ErrStringTooShort)
 	fmt.Println(tooShortErr == ErrStringTooShort)
 
+	tooLongErr := Fetch(err, ErrStringTooLong)
+	fmt.Println(tooLongErr)
+
 	noSpecialCharactersErr := Fetch(err, ErrNoSpecialCharacters)
 	fmt.Println(noSpecialCharactersErr == ErrNoSpecialCharacters)
 
 	// Output:
 	// string is too short : no special characters
 	// true
+	// <nil>
 	// true
 }

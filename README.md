@@ -2,48 +2,72 @@
 
 ## Overview
 
-The main motto of the module is to handle errors as first-class citizens in Go. It provides the way to attach inspectable context to the error (mainly by merging several errors into an instance of module’s internal error type) and to provide utility functions to inspect the errors for the attached context. Main focus was on providing the way to make errors testable and to convey some meaningful information for the upper layers on error propagation. 
+This module introduces the fuctionality of handling Go errors as first-class citizens by:
 
-This module was inspired by the github.com/pkg/errors module which solves some error handling issues in Go, but still is hardly usable for the unit testing and has constraints for working with typed errors. 
+- providing a way to attach inspectable context to an existing error;
+- making errors' contexts inspectable;
+- making errors unit-testing friendly.
 
-All errors returned from the utility functions **Wrap**, **WithMessage** and **WrapWithMessage** return an object conforming to the **error** interface with a stacktrace created at the moment of function invocation. Use:
+This module was inspired by the ***github.com/pkg/errors*** one which solves some error handling issues in Go, but still is hardly usable for the unit-testing. 
+
+All errors returned from the utility functions **Wrap**, **WithMessage** and **WrapWithMessage** return an object conforming to the **error** interface with a stacktrace created at the moment of function invocation.
 
 ```go
-err := errors.New("error message")
-fmt.Printf("%s", err) // Prints the error message
-fmt.Printf("%+v", err) // Prints the error message with stacktrace
+err := errors.Wrap(errors.New("inner error"), errors.New("outer error"))
+fmt.Printf("%s", err)
+// Output: 
+// outer error : inner error
+fmt.Printf("%+v", err)
+// Output: 
+// outter error : inner error
+//    github.com/ameteiko/errors/errors.go:52 errors.Wrap()
+//    github.com/ameteiko/errors/examples/main.go:10 main.main()
 ```
 
-The error message consists of all error messages joined with " : " sequence. 
+The error message consists of all error messages joined with " : " sequence.
 
-## **Installation**
+## More in detail
+
+Internally all errors are merged into an internal error queue object with a stacktrace at the moment of creation. It's recommended to have a single error-flow path for the application, meaning that parameters to the Wrap function must not be composite errors coming from different executions paths, because merging them won't make much sense from the operational perspective.
+
+## Installation**
 
 ```
 go get github.com/ameteiko/errors
 ```
 
-## **New(msg string) error**
+## **New(format string, args ...interface{}) error**
 
-This function is a replacement for the **errors.New** function to prevent from importing several packages for error handling. 
+This function is a wrapper for the **fmt.Errorf** function to allow use a single package for error handling.
+
+```Go
+err := errors.New("validation failed for %q", username)
+```
+
+
 
 ## **Wrap(err ...error) error**
 
-Utility function Wrap merges several errors passed as a variadic parameter into one. All nil errors will be filtered out of the resulting error. Best usage is to attach an application error to the error returned from the 3rd-party module.
+Utility function Wrap merges several errors passed as a variadic parameters into one. All nil errors will be filtered out of the resulting error. The recommended way of using the function is to attach an application error to the error returned from the 3rd-party module.
 
 ```go
-var errValidation = errors.New("validation error")
+// Some package-level error
+var errParsing = errors.New("parsing error")
 
 func parseResponse(r []byte) error {
     var resp Response
     if err := json.Unmarshal(r, &resp); err != nil {
-        return errors.Wrap(err, errValidation)
+        // Wrap the error returned from the json package with application identifiable error.
+        return errors.Wrap(err, errParsing) 
     }
 }
 ```
 
+If several errors contain stacktraces, the new one will be created at the moment of the Wrap instantiation. If only one contains a stacktrace, then it will be reused.
+
 ## WithMessage(err error, format string, args ...interface{}) error
 
-Attaches a formatted message for the error. If message is empty, the original error will be returned. If error is nil, then nil will be returned. Best used to add some error context information to the error, like parameters that resulted with an error. 
+WithMessage attaches a formatted message for the error. Best used to add some error context to the error, like parameters that caused an error. 
 
 ```go
 func parseResponse(r []byte) error {
@@ -58,15 +82,16 @@ func parseResponse(r []byte) error {
 
 ## WrapWithMessage(erra, errb error, format string, args ...interface{}) error
 
-Wraps several errors and attaches a message to them. This function is a combination of Wrap and WithMessage. 
+WrapWithMessage wraps several errors and attaches a message to them. This function is a combination of Wrap and WithMessage. 
 
 ```go
-var errValidation = errors.New("validation error")
+var errParsing = errors.New("parsing error")
 
 func parseResponse(r []byte) error {
     var resp Response
     if err := json.Unmarshal(r, &resp); err != nil {
-        return errors.WrapWithMessage(err, errValidation, "unmarshalling error for %v", r)
+        // Wrap the error returned from the json package with application identifiable error and a message.
+        return errors.WrapWithMessage(err, errParsing, "parsing error for %v", r)
     }
 }
 ```
@@ -75,33 +100,29 @@ func parseResponse(r []byte) error {
 
 ## Fetch(source error, target error) error
 
-Inspects the source error and returns matched target error object from it. If target is nil, or a pointer to nil, then result is nil.
+Inspects the source error and returns matched target error object from it.
 
 ```go
-parseErr := parseResponse
-if err := errors.Fetch(parseErr, errValidation); err != nil {
-    // There was a parsing error.
+parsingErr := parseResponse()
+if err := errors.Fetch(parsingErr, errParsing); err != nil {
+    log.Println("parsing error", err)
 }
 ```
 
 ## FetchByType(source error, target interface{}) error
 
-Inspects the error and returns the entries matched by the type. Returns nil if If target is nil or not a pointer.
+Inspects the error and returns the entry matched by the type. Returns nil if If target is nil or not a pointer.
 
 ```go
+// LoggableErr log error messages when they are handled.
 type LoggableErr struct {
     msg string
 }
 
-func (e LoggableErr) Error() string {
-    return e.msg
-}
+func (e LoggableErr) Error() string { return e.msg }
+func (e LoggableErr) Log() string { log.Println(e.msg) }
 
-func (e LoggableErr) Log() string {
-    log.Print(e.msg)
-}
-
-errResponseParsing := LoggableErr{msg: "response parsing error"}
+errParsing := LoggableErr{msg: "parsing error"}
   
 func main() {
     parsingErr := parseResponse("}")
@@ -109,6 +130,44 @@ func main() {
         loggableErr := err.(LoggableErr)
         loggableErr.Log()
     }
+}
+```
+
+## FetchAllByType(source error, target interface{}) error
+
+Inspects the error and returns all the entries matched by the type. Returns nil if If target is nil or not a pointer.
+
+```go
+type ValidationError struct {
+    msg string
+}
+
+func (e ValidationError) Error() string { return e.msg }
+
+var (
+    errNameIsEmpty    = ValidationError{ msg: "name is empty" }
+    errNameIsTooLong  = ValidationError{ msg: "name is too long" }
+    errNameIsTooShort = ValidationError{ msg: "name is too short" }
+    errPwdIsEmpty     = ValidationError{ msg: "password is empty" }
+)
+
+func validateUser(name, pwd string) (err error) {
+    if name == "" {
+        err = errors.Wrap(err, errNameIsEmpty)
+    }
+    if pwd == "" {
+        err = errors.Wrap(err, errPwdIsEmpty)
+    }
+    // ... the rest of validations
+  
+    return err 
+}
+
+func main() {
+    err := validateUser("", "")
+    errs := errors.FetchAllByType(err, (*ValidationError)(nil))
+    fmt.Println(errs)
+    // Prints two errors: errPwdIsEmpty, errNameIsEmpty
 }
 ```
 

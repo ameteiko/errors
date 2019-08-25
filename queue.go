@@ -3,34 +3,29 @@ package errors
 import (
 	"bytes"
 	"fmt"
-
-	"github.com/ameteiko/errors/stacktrace"
 )
 
-// errMsgSeparator joins error messages in form of "outer error" : "inner error".
+// errMsgSeparator joins error messages in form of "outer error : inner error".
 const errMsgSeparator = " : "
 
-// queue queues application errors into an ordered collection.
-// All errors are stored LIFO order, that's why getErrors() reverses the list.
+// queue object queues application errors into an ordered collection.
+// All errors are stored in LIFO order, that's why getErrors() reverses the list.
 type queue struct {
 	errs       []error       // The Double-Ended Queue with errors.
 	stacktrace fmt.Formatter // Stacktrace at the moment of creation.
 }
 
-// newQueue returns a new queue instance with invocation stacktrace data.
-func newQueue() *queue {
-	return &queue{stacktrace: stacktrace.New()}
+// newQueue returns a new queue instance with a stacktrace data at the moment of invocation.
+// Contract: all errors from the errs list are not nil.
+func newQueue(errs ...error) *queue {
+	return &queue{errs: errs, stacktrace: newStacktrace()}
 }
 
-// Error returns a composite error message.
+// Error returns an error message.
 func (q *queue) Error() (errMsg string) {
-	if len(q.errs) == 0 {
-		return ""
-	}
-
 	buf := new(bytes.Buffer)
-	for i, err := range q.getErrors() {
-		if i != 0 {
+	for _, err := range q.getErrors() {
+		if buf.Len() != 0 {
 			buf.WriteString(errMsgSeparator)
 		}
 		buf.WriteString(err.Error())
@@ -39,7 +34,7 @@ func (q *queue) Error() (errMsg string) {
 	return buf.String()
 }
 
-// Format formats a queue error message.
+// Format formats an error message for the queue object.
 // %+v additionally prints out an error stacktrace.
 func (q *queue) Format(st fmt.State, verb rune) {
 	_, _ = st.Write([]byte(q.Error()))

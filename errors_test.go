@@ -6,92 +6,42 @@ import (
 	"testing"
 )
 
-// typedError and typedErrorInterface represent a custom error type for a test suite.
 type (
-	typedError          struct{ msg string }
-	typedErrorPtr       struct{ msg string }
-	typedErrorInterface interface{ Message() string }
-	customInterface     interface{ Send() string }
+	customError struct{ msg string }
+	//typedErrorPtr       struct{ msg string }
+	customErrorInterface interface{ Message() string }
+	customInterface      interface{ Send() string }
 )
 
-func (e typedError) Error() string     { return e.msg }
-func (e typedError) Message() string   { return e.msg }
-func (e *typedErrorPtr) Error() string { return e.msg }
+func (e customError) Error() string   { return e.msg }
+func (e customError) Message() string { return e.msg }
+
+//func (e *typedErrorPtr) Error() string { return e.msg }
 
 func TestWrapNotToCauseSideEffects(t *testing.T) {
 	var (
-		err1   = New("1")
-		err2   = New("2")
-		err3   = New("3")
-		q1     = &queue{errs: []error{err1, err2}}
-		q1copy = &queue{errs: []error{err1, err2}}
-		q2     = &queue{errs: []error{err3}}
-		q2copy = &queue{errs: []error{err3}}
+		err1    = New("1")
+		err2    = New("2")
+		err3    = New("3")
+		q21     = &queue{errs: []error{err1, err2}}
+		q21copy = &queue{errs: []error{err1, err2}}
+		q3      = &queue{errs: []error{err3}}
+		q3copy  = &queue{errs: []error{err3}}
 	)
 
-	q := Wrap(q1, q2)
+	q := Wrap(q21, q3)
 
-	if !reflect.DeepEqual(q1, q1copy) {
-		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q1, q1copy)
+	if !reflect.DeepEqual(q21, q21copy) {
+		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q21, q21copy)
 	}
-	if !reflect.DeepEqual(q2, q2copy) {
-		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q2, q2copy)
+	if !reflect.DeepEqual(q3, q3copy) {
+		t.Errorf("Wrap(q1, q2) mustn't cause side effects. q1 was changed: %v != %v", q3, q3copy)
 	}
-	if q == q1 {
+	if q == q21 {
 		t.Errorf("Wrap(q1, q2) must return new queue instance. q1 returned")
 	}
-	if q == q2 {
+	if q == q3 {
 		t.Errorf("Wrap(q1, q2) must return new queue instance. q2 returned")
-	}
-}
-
-func TestCompareErrors(t *testing.T) {
-	var (
-		err1 = New("1")
-		err2 = New("2")
-	)
-
-	tcs := []struct {
-		name                 string
-		sourceErr, targetErr error
-		matched              bool
-	}{
-		{
-			name:      "ForMatchingErrors",
-			sourceErr: err1, targetErr: err1,
-			matched: true,
-		},
-		{
-			name:      "ForNotMatchingErrors",
-			sourceErr: err2, targetErr: err1,
-			matched: false,
-		},
-		{
-			name:      "ForAnErrorAndAMatchingErrorQueueAsSource",
-			sourceErr: &queue{errs: []error{err1}}, targetErr: err1,
-			matched: true,
-		},
-		{
-			name:      "ForAnErrorAndAMatchingErrorQueueAsTarget",
-			sourceErr: err1, targetErr: &queue{errs: []error{err1}},
-			matched: true,
-		},
-		{
-			name:      "ForAnErrorAndANotMatchingErrorQueueAsSource",
-			sourceErr: &queue{errs: []error{err1}}, targetErr: err2,
-			matched: false,
-		},
-	}
-
-	for i := range tcs {
-		tc := tcs[i]
-		t.Run(tc.name, func(t *testing.T) {
-			match := compareErrs(tc.sourceErr, tc.targetErr)
-
-			if tc.matched != match {
-				t.Errorf("compareErrs(%v, %v) != %v", tc.sourceErr, tc.targetErr, tc.matched)
-			}
-		})
 	}
 }
 
@@ -143,7 +93,7 @@ func TestFetch(t *testing.T) {
 			fetchedErr: nil,
 		},
 		{
-			name: "ForAnErrorQueueWithError",
+			name: "ForAnErrorQueueWithMatchingError",
 			qErr: &queue{errs: []error{err1, err2}}, targetErr: err2,
 			fetchedErr: err2,
 		},
@@ -164,76 +114,6 @@ func TestFetch(t *testing.T) {
 
 			if tc.fetchedErr.Error() != fetchedErr.Error() {
 				t.Errorf("Fetch(%v, %v) != %v, got %v", tc.qErr, tc.targetErr, tc.fetchedErr, fetchedErr)
-			}
-		})
-	}
-}
-
-func TestErrorMatches(t *testing.T) {
-	var (
-		err1 = New("1")
-	)
-
-	tcs := []struct {
-		name      string
-		sourceErr error
-		targetErr interface{}
-		matched   bool
-	}{
-		{
-			name:      "ForTwoSameErrors",
-			sourceErr: err1, targetErr: err1,
-			matched: true,
-		},
-		{
-			name:      "ForDifferentErrorsWithSameValue",
-			sourceErr: New("error"), targetErr: New("error"),
-			matched: true,
-		},
-		{
-			name:      "ForCustomInterfacePointer",
-			sourceErr: err1, targetErr: (*customInterface)(nil),
-			matched: false,
-		},
-		{
-			name:      "ForErrorInterfacePointer",
-			sourceErr: err1, targetErr: (*error)(nil),
-			matched: true,
-		},
-		{
-			name:      "ForACustomErrorAndErrorInterfacePointer",
-			sourceErr: typedError{msg: "error"}, targetErr: (*error)(nil),
-			matched: true,
-		},
-		{
-			name:      "ForACustomErrorAndCustomInterfacePointer",
-			sourceErr: typedError{msg: "error"}, targetErr: (*typedErrorInterface)(nil),
-			matched: true,
-		},
-		{
-			name:      "ForACustomErrorAndCustomInterface",
-			sourceErr: typedError{msg: "error"}, targetErr: (typedErrorInterface)(nil),
-			matched: false,
-		},
-		{
-			name:      "ForACustomErrorAndAPointerToErrorStruct",
-			sourceErr: typedError{msg: "error"}, targetErr: (*typedError)(nil),
-			matched: true,
-		},
-		{
-			name:      "ForACustomErrorPointerAndAPointerToErrorStruct",
-			sourceErr: &typedError{msg: "error"}, targetErr: (*typedError)(nil),
-			matched: true,
-		},
-	}
-
-	for i := range tcs {
-		tc := tcs[i]
-		t.Run(tc.name, func(t *testing.T) {
-			matched := errorMatches(tc.sourceErr, tc.targetErr)
-
-			if tc.matched != matched {
-				t.Errorf("errorMatches(%v, %v) != %v", tc.sourceErr, tc.targetErr, tc.matched)
 			}
 		})
 	}
@@ -271,33 +151,33 @@ func TestWrap(t *testing.T) {
 		},
 		{
 			name: "ForASingleErrorQueue",
-			errs: []error{&queue{errs: []error{err1}}},
-			q:    &queue{errs: []error{err1}},
+			errs: []error{newQueue(err1)},
+			q:    newQueue(err1),
 		},
 		{
 			name: "ForSeveralErrors",
 			errs: []error{nil, err1, nil, err2, nil},
-			q:    &queue{errs: []error{err1, err2}},
+			q:    newQueue(err1, err2),
 		},
 		{
 			name: "ForSeveralErrorsAndAQueue",
-			errs: []error{nil, err1, nil, err2, &queue{errs: []error{err31, err32}}, err4, nil},
-			q:    &queue{errs: []error{err1, err2, err31, err32, err4}},
+			errs: []error{nil, err1, nil, err2, newQueue(err31, err32), err4, nil},
+			q:    newQueue(err1, err2, err31, err32, err4),
 		},
 		{
 			name: "ForAQueueThatGoesLast",
-			errs: []error{nil, err1, nil, err2, &queue{errs: []error{err31, err32}}},
-			q:    &queue{errs: []error{err1, err2, err31, err32}},
+			errs: []error{nil, err1, nil, err2, newQueue(err31, err32)},
+			q:    newQueue(err1, err2, err31, err32),
 		},
 		{
 			name: "ForAQueueThatGoesFirst",
-			errs: []error{&queue{errs: []error{err31, err32}}, err4},
-			q:    &queue{errs: []error{err31, err32, err4}},
+			errs: []error{newQueue(err31, err32), err4},
+			q:    newQueue(err31, err32, err4),
 		},
 		{
 			name: "ForErrorsAndSeveralErrorQueuesInBetween",
-			errs: []error{err1, err2, &queue{errs: []error{err31, err32}}, &queue{errs: []error{err4}}, err5},
-			q:    &queue{errs: []error{err1, err2, err31, err32, err4, err5}},
+			errs: []error{err1, err2, newQueue(err31, err32), newQueue(err4), err5},
+			q:    newQueue(err1, err2, err31, err32, err4, err5),
 		},
 	}
 
@@ -357,15 +237,15 @@ func TestWithMessage(t *testing.T) {
 		},
 		{
 			name:   "ForAnErrorAndAMessage",
-			err:    typedError{"custom error"},
+			err:    customError{"custom error"},
 			format: "",
-			res:    typedError{"custom error"},
+			res:    customError{"custom error"},
 		},
 		{
 			name:   "ForAnErrorAndAMessage",
-			err:    typedError{"custom error"},
+			err:    customError{"custom error"},
 			format: "error message",
-			res:    &queue{errs: []error{typedError{"custom error"}, New("error message")}},
+			res:    &queue{errs: []error{customError{"custom error"}, New("error message")}},
 		},
 		{
 			name:   "ForAMessageAndAnErrorQueue",
@@ -454,8 +334,8 @@ func TestWrapWithMessage(t *testing.T) {
 
 func TestIsErrNil(t *testing.T) {
 	var (
-		zeroErrorValue typedError
-		zeroErrorPtr   *typedError
+		zeroErrorValue customError
+		zeroErrorPtr   *customError
 	)
 	tcs := []struct {
 		name string
@@ -528,56 +408,56 @@ func TestFetchByType(t *testing.T) {
 		},
 		{
 			name:   "ForExistingErrorType",
-			source: &queue{errs: []error{err1, typedError{"2"}, err3}},
-			target: (*typedError)(nil),
-			res:    typedError{"2"},
+			source: &queue{errs: []error{err1, customError{"2"}, err3}},
+			target: (*customError)(nil),
+			res:    customError{"2"},
 		},
 		{
 			name:   "ForAnInterface",
-			source: &queue{errs: []error{err1, typedError{"2"}, err3}},
-			target: (typedErrorInterface)(nil),
+			source: &queue{errs: []error{err1, customError{"2"}, err3}},
+			target: (customErrorInterface)(nil),
 			res:    nil,
 		},
 		{
 			name:   "ForAnInterfacePointer",
-			source: &queue{errs: []error{err1, typedError{"2"}, err3}},
-			target: (*typedErrorInterface)(nil),
-			res:    typedError{"2"},
+			source: &queue{errs: []error{err1, customError{"2"}, err3}},
+			target: (*customErrorInterface)(nil),
+			res:    customError{"2"},
 		},
 		{
 			name:   "ForSeveralCustomErrors",
-			source: &queue{errs: []error{err1, typedError{"2"}, err3, typedError{"4"}}},
-			target: (*typedError)(nil),
-			res:    typedError{"4"},
+			source: &queue{errs: []error{err1, customError{"2"}, err3, customError{"4"}}},
+			target: (*customError)(nil),
+			res:    customError{"4"},
 		},
 		{
 			name:   "ForAnErrorThatIsNotInErrorQueue",
 			source: &queue{errs: []error{err1, err2}},
-			target: (*typedError)(nil),
+			target: (*customError)(nil),
 			res:    nil,
 		},
 		{
 			name:   "ForAnErrorSelectedByTypePointer",
-			source: typedError{"2"},
-			target: (*typedError)(nil),
-			res:    typedError{"2"},
+			source: customError{"2"},
+			target: (*customError)(nil),
+			res:    customError{"2"},
 		},
 		{
 			name:   "ForAnErrorSelectedByInterfacePointer",
-			source: typedError{"2"},
-			target: (*typedErrorInterface)(nil),
-			res:    typedError{"2"},
+			source: customError{"2"},
+			target: (*customErrorInterface)(nil),
+			res:    customError{"2"},
 		},
 		{
 			name:   "ForAnErrorSelectedByNotMatchingInterfacePointer",
-			source: typedError{"2"},
+			source: customError{"2"},
 			target: (*fmt.Formatter)(nil),
 			res:    nil,
 		},
 		{
 			name:   "ForAnErrorSelectedByInterface",
-			source: typedError{"2"},
-			target: (typedErrorInterface)(nil),
+			source: customError{"2"},
+			target: (customErrorInterface)(nil),
 			res:    nil,
 		},
 	}
@@ -597,6 +477,125 @@ func TestFetchByType(t *testing.T) {
 
 			if res.Error() != tc.res.Error() {
 				t.Errorf("FetchByType(%v, %v) != %v, got %v", tc.source, tc.target, tc.res, res)
+			}
+		})
+	}
+}
+
+func TestCompareErrors(t *testing.T) {
+	var (
+		err1 = New("1")
+		err2 = New("2")
+	)
+
+	tcs := []struct {
+		name                 string
+		sourceErr, targetErr error
+		matched              bool
+	}{
+		{
+			name:      "ForMatchingErrors",
+			sourceErr: err1, targetErr: err1,
+			matched: true,
+		},
+		{
+			name:      "ForNotMatchingErrors",
+			sourceErr: err2, targetErr: err1,
+			matched: false,
+		},
+		{
+			name:      "ForAnErrorAndAMatchingErrorQueueAsSource",
+			sourceErr: &queue{errs: []error{err1}}, targetErr: err1,
+			matched: true,
+		},
+		{
+			name:      "ForAnErrorAndAMatchingErrorQueueAsTarget",
+			sourceErr: err1, targetErr: &queue{errs: []error{err1}},
+			matched: true,
+		},
+		{
+			name:      "ForAnErrorAndANotMatchingErrorQueueAsSource",
+			sourceErr: &queue{errs: []error{err1}}, targetErr: err2,
+			matched: false,
+		},
+	}
+
+	for i := range tcs {
+		tc := tcs[i]
+		t.Run(tc.name, func(t *testing.T) {
+			match := compareErrs(tc.sourceErr, tc.targetErr)
+
+			if tc.matched != match {
+				t.Errorf("compareErrs(%v, %v) != %v", tc.sourceErr, tc.targetErr, tc.matched)
+			}
+		})
+	}
+}
+
+func TestErrorMatches(t *testing.T) {
+	var (
+		err1 = New("1")
+	)
+
+	tcs := []struct {
+		name      string
+		sourceErr error
+		targetErr interface{}
+		matched   bool
+	}{
+		{
+			name:      "ForTwoSameErrors",
+			sourceErr: err1, targetErr: err1,
+			matched: true,
+		},
+		{
+			name:      "ForDifferentErrorsWithSameValue",
+			sourceErr: New("error"), targetErr: New("error"),
+			matched: true,
+		},
+		{
+			name:      "ForCustomInterfacePointer",
+			sourceErr: err1, targetErr: (*customInterface)(nil),
+			matched: false,
+		},
+		{
+			name:      "ForErrorInterfacePointer",
+			sourceErr: err1, targetErr: (*error)(nil),
+			matched: true,
+		},
+		{
+			name:      "ForACustomErrorAndErrorInterfacePointer",
+			sourceErr: customError{msg: "error"}, targetErr: (*error)(nil),
+			matched: true,
+		},
+		{
+			name:      "ForACustomErrorAndCustomInterfacePointer",
+			sourceErr: customError{msg: "error"}, targetErr: (*customErrorInterface)(nil),
+			matched: true,
+		},
+		{
+			name:      "ForACustomErrorAndAPointerToErrorStruct",
+			sourceErr: customError{msg: "error"}, targetErr: (*customError)(nil),
+			matched: true,
+		},
+		{
+			name:      "ForACustomErrorPointerAndAPointerToErrorStruct",
+			sourceErr: &customError{msg: "error"}, targetErr: (*customError)(nil),
+			matched: true,
+		},
+	}
+
+	for i := range tcs {
+		tc := tcs[i]
+		t.Run(tc.name, func(t *testing.T) {
+			targetType, targetElem, err := getTypeElem(tc.targetErr)
+			if err != nil {
+				t.Errorf("target parameter cannot be nil")
+			}
+			matched := errorMatches(tc.sourceErr, targetType, targetElem)
+
+			if tc.matched != matched {
+				t.Errorf("errorMatches(%v, %v) != %v", tc.sourceErr, tc.targetErr, tc.matched)
 			}
 		})
 	}

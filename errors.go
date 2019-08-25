@@ -4,13 +4,13 @@
 // layer via providing current context. The purpose of this package is to provide a way to attach some additional
 // context to the error.
 //
-// The package's core is the internal type errors.queue which is exposed to clients as error interface. All
+// The package's core is the internal type errors.queue which is returned to clients as error interface. All
 // application error handling is supposed to operate with errors using Wrap(), WithMessage() or WrapWithMessage()
-// providing the existing error and attaching some additional context to it. Each of these methods either create a new
-// error queue instance if it doesn't exist or uses existing one.
+// providing the existing error and attaching some additional context to it. Each of those functions creates a new
+// error queue instance.
 //
-// Once the error reaches to layer to handle the error, one of functions Fetch(), FetchByType() should be used to
-// examine the error on having one of contexts.
+// Once the error reaches to layer to handle the error, one of functions Fetch(), FetchByType() or FetchAllByType()
+// should be used to examine the error on having one of contexts.
 package errors
 
 import (
@@ -18,38 +18,55 @@ import (
 	"reflect"
 )
 
-// New returns error object wrapped with a stacktrace.
-func New(msg string) error {
-	return Wrap(fmt.Errorf(msg))
+// New returns an error.
+// This method is a replacement for built-in errors.New function.
+func New(format string, args ...interface{}) error {
+	if format == "" {
+		return nil
+	}
+
+	return fmt.Errorf(format, args...)
 }
 
-// Wrap wraps variadic number of errors into an error queue providing context about the error.
+// Wrap wraps variadic number of errors into an error queue providing additional error context.
 //
-// This function wraps several errors into internal queue object that satisfies the error interface and is inspectable
-// by Fetch(), FetchByType() functions.
-// It is used to provide extended local context to the existing error object.
-// If several queue instances are passed, then the they will be disintegrated and all the errors from them will be
-// injected into the last found queue object.
+// This function wraps several errors into internal queue object that conforms to the error interface and is inspectable
+// by Fetch(), FetchByType(), FetchAllByType() functions. It is used to provide extended local context to the existing
+// error object. If any of errors is a queue instance, then Wrap() fetches it's error list and puts to the newly created
+// queue instance.
 func Wrap(errs ...error) error {
-	var ee []error
+	var (
+		q                = newQueue()
+		foundQs          int
+		foundQStacktrace fmt.Formatter
+	)
 	for _, err := range errs {
 		if isErrNil(err) {
 			continue
 		}
 
-		if q, ok := err.(*queue); ok {
-			ee = append(ee, q.errs...)
+		errQ, ok := err.(*queue)
+		if !ok {
+			q.errs = append(q.errs, err)
 			continue
 		}
 
-		ee = append(ee, err)
+		q.errs = append(q.errs, errQ.errs...)
+		if foundQs == 0 {
+			foundQStacktrace = errQ.stacktrace
+		}
+		foundQs++
 	}
 
-	if len(ee) == 0 {
+	if len(q.errs) == 0 {
 		return nil
 	}
 
-	return &queue{errs: ee}
+	if foundQs == 1 {
+		q.stacktrace = foundQStacktrace
+	}
+
+	return q
 }
 
 // WithMessage returns an error wrapped with message.
@@ -59,18 +76,18 @@ func WithMessage(err error, format string, args ...interface{}) error {
 		return nil
 	}
 
-	if format == "" {
-		return err
-	}
-
-	return Wrap(err, fmt.Errorf(format, args...))
+	return Wrap(err, New(format, args...))
 }
 
 // WrapWithMessage wraps two errors with message.
 // It is used when an external call returns a 3rd-party error, that needs to be wrapped not only into an application
 // error but with additional context too.
 func WrapWithMessage(err1, err2 error, format string, args ...interface{}) error {
-	return WithMessage(Wrap(err1, err2), format, args...)
+	if isErrNil(err1) && isErrNil(err2) {
+		return nil
+	}
+
+	return Wrap(err1, err2, New(format, args...))
 }
 
 // Fetch returns targetErr from the err queue.
@@ -80,15 +97,14 @@ func Fetch(qErr, targetErr error) error {
 		return nil
 	}
 
-	q, ok := qErr.(*queue)
-	if !ok {
-		if compareErrs(qErr, targetErr) {
-			return targetErr
-		}
-		return nil
+	var errs []error
+	if q, ok := qErr.(*queue); ok {
+		errs = q.getErrors()
+	} else {
+		errs = []error{qErr}
 	}
 
-	for _, err := range q.getErrors() {
+	for _, err := range errs {
 		if compareErrs(err, targetErr) {
 			return targetErr
 		}
@@ -99,32 +115,48 @@ func Fetch(qErr, targetErr error) error {
 
 // FetchByType returns a first error from the error queue that implements or assignable to targetErr.
 // targetErr must be a pointer to either a structure or interface.
-//
 // qErr is supposed to be a queue instance, but it can also be any error object.
-// targetErr is the error to be searched over the err. It can be: pointer to the error type, interface, or error value.
-// TODO: think on errors that are created by values, not by by references.
 func FetchByType(qErr error, targetErr interface{}) error {
-	if isErrNil(qErr) {
+	errs := fetchAllByType(qErr, targetErr, true)
+	if errs == nil {
 		return nil
 	}
 
-	if targetErr == nil {
+	return errs[0]
+}
+
+// FetchAllByType returns all matched errors from the error queue that implement or are assignable to targetErr.
+func FetchAllByType(qErr error, targetErr interface{}) []error {
+	return fetchAllByType(qErr, targetErr, false)
+}
+
+func fetchAllByType(qErr error, targetErr interface{}, returnFirst bool) (errs []error) {
+	targetType, targetElem, err := getTypeElem(targetErr)
+	if isErrNil(qErr) || err != nil || targetType.Kind() != reflect.Ptr {
 		return nil
 	}
 
-	q, ok := qErr.(*queue)
-	if !ok {
-		// The qErr is not a queue instance but error, so check if it matches target error.
-		if errorMatches(qErr, targetErr) {
-			return qErr
+	var qErrs []error
+	if q, ok := qErr.(*queue); ok {
+		qErrs = q.getErrors()
+	} else {
+		qErrs = []error{qErr}
+	}
+
+	for _, e := range qErrs {
+		if !errorMatches(e, targetType, targetElem) {
+			continue
 		}
-		return nil
+
+		if returnFirst {
+			return []error{e}
+		}
+
+		errs = append(errs, e)
 	}
 
-	for _, e := range q.getErrors() {
-		if errorMatches(e, targetErr) {
-			return e
-		}
+	if len(errs) > 0 {
+		return errs
 	}
 
 	return nil
@@ -143,7 +175,7 @@ func isErrNil(err error) bool {
 }
 
 // compareErrs returns true if errors are the same.
-// Method Contract: sourceErr and targetErr are not nil.
+// Method contract: sourceErr and targetErr are not nil.
 func compareErrs(sourceErr, targetErr error) bool {
 	return sourceErr.Error() == targetErr.Error()
 }
@@ -153,33 +185,27 @@ func compareErrs(sourceErr, targetErr error) bool {
 //     - errorInstance
 //     - (*errorInterface)(nil)
 //     - (*customErrorStruct)(nil)
-// TODO: apply some optimization here not to calculate targetType, targetElem for each iteration.
-// nolint:gocyclo
-func errorMatches(sourceErr error, target interface{}) bool {
-	sourceType, _, sourceConversionErr := getTypeElem(sourceErr)
-	targetType, targetElem, targetConversionErr := getTypeElem(target)
-	if sourceConversionErr != nil || targetConversionErr != nil {
+func errorMatches(sourceErr error, targetType reflect.Type, targetElem reflect.Type) bool {
+	sourceType, _, err := getTypeElem(sourceErr)
+	if err != nil {
 		return false
 	}
 
 	doesImplement := reflect.Interface == targetElem.Kind() && sourceType.Implements(targetElem)
 	isTypeOf := reflect.Struct == targetElem.Kind() &&
 		(sourceType.AssignableTo(targetType) || sourceType.AssignableTo(targetElem))
-	if doesImplement || isTypeOf {
-		return true
-	}
 
-	return false
+	return doesImplement || isTypeOf
 }
 
 func getTypeElem(obj interface{}) (tp reflect.Type, el reflect.Type, err error) {
 	objType := reflect.TypeOf(obj)
 	if objType == nil {
-		return nil, nil, fmt.Errorf("obj is nil")
+		return nil, nil, New("obj is nil")
 	}
 	objTypeKind := objType.Kind()
 	if objTypeKind != reflect.Struct && objTypeKind != reflect.Ptr && objTypeKind != reflect.Interface {
-		return nil, nil, fmt.Errorf("must be valid obj")
+		return nil, nil, New("obj must be one of: struct, pointer, interface")
 	}
 
 	if objTypeKind == reflect.Struct {

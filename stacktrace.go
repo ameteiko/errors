@@ -1,4 +1,4 @@
-package stacktrace
+package errors
 
 import (
 	"bytes"
@@ -23,8 +23,8 @@ var (
 // stacktrace wraps a stacktrace of program counters.
 type Stacktrace []uintptr
 
-// New returns a stacktrace.
-func New() Stacktrace {
+// newStacktrace returns a stacktrace.
+func newStacktrace() Stacktrace {
 	s := make(Stacktrace, stacktraceDepth)
 	// Skipping 3 runtime callers:
 	//   0 - runtime.Callers()
